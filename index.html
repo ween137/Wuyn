@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>وين؟</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff;--fg:#0a0a0a;--mut:#6b6b6b;--line:#e4e4e4;--soft:#f4f4f4;--r:16px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:'Tajawal',system-ui,sans-serif;font-size:16px}
+body{min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.top{position:sticky;top:0;z-index:5;background:#000;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top))}
+.logo{font-weight:800;font-size:26px;letter-spacing:.5px}
+main{max-width:560px;margin:0 auto;padding:16px;padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+.auth{max-width:420px;margin:0 auto;padding:40px 20px}
+.brand{background:#000;color:#fff;border-radius:24px;text-align:center;font-weight:800;font-size:56px;padding:28px 0 20px}
+.sub{text-align:center;color:var(--mut);margin:10px 0 24px}
+label{display:block;font-weight:500;margin-bottom:14px;font-size:14px}
+input,select{display:block;width:100%;margin-top:6px;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;font-size:16px}
+input:focus,select:focus{outline:none;border-color:#000}
+.primary{width:100%;background:#000;color:#fff;border:0;border-radius:14px;padding:15px;font-weight:700;font-size:17px;cursor:pointer}
+.primary:disabled{opacity:.5}
+.secondary{width:100%;background:#fff;color:#000;border:1.5px solid #000;border-radius:14px;padding:13px;font-weight:700;cursor:pointer;margin-top:10px}
+.ghost{background:transparent;color:#fff;border:1px solid #555;border-radius:10px;padding:6px 12px;cursor:pointer}
+.link{background:none;border:0;display:block;margin:18px auto 0;text-decoration:underline;color:var(--mut);cursor:pointer}
+.card{border:1.5px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;background:#fff}
+.card h3{margin:0 0 8px;font-size:17px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.mut{color:var(--mut);font-size:14px}
+.pill{display:inline-block;background:var(--soft);border-radius:99px;padding:3px 12px;font-size:13px;font-weight:700}
+.pill.dark{background:#000;color:#fff}
+.note{background:var(--soft);border-radius:12px;padding:14px;margin:12px 0;line-height:1.7}
+.big{font-size:22px;font-weight:800;margin:6px 0 12px}
+.tabs{display:flex;gap:8px;margin-bottom:14px;overflow-x:auto}
+.tab{flex:1;white-space:nowrap;border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+.tab.on{background:#000;color:#fff;border-color:#000}
+.btns{display:flex;gap:8px;margin-top:10px}
+.btns button{flex:1;border-radius:12px;padding:11px;border:1.5px solid #000;background:#fff;font-weight:700;cursor:pointer}
+.btns button.fill{background:#000;color:#fff}
+.btns button.danger{border-color:#999;color:#444}
+.switch{display:flex;align-items:center;gap:8px;background:#fff;color:#000;border:0;border-radius:99px;padding:6px 14px;font-weight:800;cursor:pointer}
+.dot{width:10px;height:10px;border-radius:50%;background:#aaa}
+.switch.on .dot{background:#18b848}
+a.tel{display:inline-block;direction:ltr;font-weight:800;color:#000}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;padding:12px 20px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90%;text-align:center}
+#toast.show{opacity:1}
+.center{text-align:center;padding:60px 20px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div id="app"><div class="center">جارٍ التحميل…</div></div>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+'use strict';
+
+/* ---------- أدوات عامة ---------- */
+const cfg = window.WEIN_CONFIG || {};
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const STATUS = {
+  searching:'قيد البحث عن سيارة', accepted:'تم قبول طلبك', on_the_way:'السائق في الطريق إليك',
+  arrived:'وصل السائق', started:'الرحلة جارية', completed:'انتهت الرحلة',
+  cancelled:'أُلغي الطلب', no_driver:'لا يوجد سائق متاح حالياً'
+};
+const ROLE = {customer:'زبون', driver:'سائق مستقل', office:'مكتب', admin:'إدارة'};
+const PSTATUS = {pending:'قيد المراجعة', active:'مفعّل', disabled:'معطّل'};
+const ACTIVE = ['searching','accepted','on_the_way','arrived','started','no_driver'];
+const CONFIRMED = ['accepted','on_the_way','arrived','started'];
+const SEARCH_TIMEOUT = 3 * 60 * 1000;
+
+let sb = null, me = null, profile = null;
+let authMode = 'login', ptab = 'open', atab = 'users';
+let geo = null, pollId = null;
+const contactCache = {};
+
+function render(html){ app.innerHTML = html; window.scrollTo(0,0); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+function startPoll(fn, ms){ stopPoll(); pollId = setTimeout(fn, ms); }
+function stopPoll(){ if(pollId){ clearTimeout(pollId); pollId = null; } }
+function timeStr(d){ try{ return new Date(d).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function shell(inner, extra){
+  return `<header class="top"><div class="logo">وين؟</div><div class="row" style="gap:10px">${extra||''}<button class="ghost" data-act="logout">خروج</button></div></header><main>${inner}</main>`;
+}
+function errView(e){
+  render(shell(`<div class="note">حدث خطأ: ${esc(e && e.message ? e.message : e)}</div><button class="secondary" data-act="reload">إعادة المحاولة</button>`));
+}
+
+/* ---------- شاشة الإعداد (قبل ربط قاعدة البيانات) ---------- */
+function renderSetup(){
+  render(`<div class="auth"><div class="brand">وين؟</div>
+  <div class="note">الواجهة جاهزة، لكن لم يتم ربطها بقاعدة البيانات بعد.<br>افتح ملف <b>config.js</b> وضع فيه رابط مشروع Supabase والمفتاح العام (anon key). سنفعل ذلك في الخطوة التالية.</div></div>`);
+}
+
+/* ---------- تسجيل الدخول ---------- */
+function renderAuth(msg){
+  stopPoll();
+  const su = authMode === 'signup';
+  render(`<div class="auth"><div class="brand">وين؟</div><p class="sub">يبرود</p>
+  <form id="authForm">
+    ${su ? `
+    <label>الاسم الكامل<input name="full_name" required autocomplete="name"></label>
+    <label>رقم الهاتف<input name="phone" type="tel" inputmode="tel" dir="ltr" required autocomplete="tel" placeholder="09xxxxxxxx"></label>
+    <label>نوع الحساب<select name="role">
+      <option value="customer">زبون</option>
+      <option value="driver">سائق مستقل</option>
+      <option value="office">مكتب تكسي</option></select></label>` : ''}
+    <label>البريد الإلكتروني<input name="email" type="email" dir="ltr" required autocomplete="email"></label>
+    <label>كلمة المرور<input name="password" type="password" dir="ltr" minlength="6" required autocomplete="${su?'new-password':'current-password'}"></label>
+    <button class="primary" type="submit">${su ? 'إنشاء حساب' : 'تسجيل الدخول'}</button>
+  </form>
+  ${msg ? `<div class="note">${esc(msg)}</div>` : ''}
+  <button class="link" data-act="toggleAuth">${su ? 'لدي حساب، تسجيل الدخول' : 'ليس لدي حساب، إنشاء حساب جديد'}</button></div>`);
+  const f = document.getElementById('authForm');
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const fd = Object.fromEntries(new FormData(f).entries());
+    const btn = f.querySelector('button'); btn.disabled = true;
+    try{
+      if(su){
+        const { data, error } = await sb.auth.signUp({
+          email: fd.email.trim(), password: fd.password,
+          options: { data: { full_name: fd.full_name.trim(), phone: fd.phone.trim(), role: fd.role } }
+        });
+        if(error) throw error;
+        if(!data.session){
+          authMode = 'login';
+          renderAuth('تم إنشاء الحساب. افتح بريدك واضغط رابط التأكيد، ثم سجّل الدخول.');
+        }
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email: fd.email.trim(), password: fd.password });
+        if(error) throw error;
+      }
+    }catch(e){
+      btn.disabled = false;
+      const m = String(e.message || '');
+      renderAuth(/invalid login/i.test(m) ? 'البريد أو كلمة المرور غير صحيحة.'
+        : /already registered/i.test(m) ? 'هذا البريد مسجّل مسبقاً.'
+        : /email not confirmed/i.test(m) ? 'لم يتم تأكيد البريد بعد.'
+        : 'تعذّر تنفيذ العملية: ' + m);
+    }
+  };
+}
+
+/* ---------- التوجيه حسب الدور ---------- */
+async function route(session){
+  stopPoll();
+  if(!session){ me = null; profile = null; return renderAuth(); }
+  me = session.user;
+  const { data, error } = await sb.from('profiles').select('*').eq('id', me.id).maybeSingle();
+  if(error) return errView(error);
+  if(!data){
+    return render(shell(`<div class="note">لم يُعثر على ملف حسابك. تأكد من تشغيل ملف قاعدة البيانات (SQL) ثم أعد المحاولة.</div><button class="secondary" data-act="reload">إعادة المحاولة</button>`));
+  }
+  profile = data;
+  if(profile.status === 'pending'){
+    return render(shell(`<div class="card"><h3>حسابك قيد المراجعة</h3><p class="mut">سيقوم فريق الإدارة بمراجعة بياناتك وتفعيل حسابك. اضغط تحديث لاحقاً.</p><button class="primary" data-act="reload">تحديث</button></div>`));
+  }
+  if(profile.status === 'disabled'){
+    return render(shell(`<div class="card"><h3>الحساب معطّل</h3><p class="mut">يرجى التواصل مع الإدارة.</p></div>`));
+  }
+  if(profile.role === 'customer') return renderCustomer();
+  if(profile.role === 'admin') return renderAdmin();
+  return renderProvider();
+}
+
+/* ---------- جهة الاتصال بعد التأكيد ---------- */
+async function getContact(rideId){
+  if(contactCache[rideId]) return contactCache[rideId];
+  const { data, error } = await sb.rpc('ride_contact', { p_ride_id: rideId });
+  const c = (!error && data && data[0]) ? data[0] : null;
+  if(c) contactCache[rideId] = c;
+  return c;
+}
+function contactHtml(c, label){
+  if(!c) return '';
+  return `<div class="note"><b>${label}:</b> ${esc(c.full_name)}<br>${c.phone ? `<a class="tel" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}</div>`;
+}
+
+/* ---------- واجهة الزبون ---------- */
+async function renderCustomer(){
+  stopPoll();
+  const { data, error } = await sb.from('rides').select('*').eq('customer_id', me.id).order('created_at',{ascending:false}).limit(1);
+  if(error) return errView(error);
+  let r = data && data[0];
+  if(r && !ACTIVE.includes(r.status) && String(r.id) === lsGet('dismissed')) r = null;
+
+  if(!r){
+    geo = null;
+    render(shell(`
+      <p class="big">أهلاً ${esc(profile.full_name)}</p>
+      <form id="rideForm">
+        <label>موقع الانطلاق<input name="pickup" required placeholder="مثال: ساحة المحطة"></label>
+        <button type="button" class="secondary" style="margin:-4px 0 14px" data-act="locate" id="locBtn">استخدم موقعي الحالي</button>
+        <label>الوجهة<input name="dropoff" required placeholder="مثال: سوق يبرود القديم"></label>
+        <button class="primary" type="submit">اطلب سيارة</button>
+      </form>`));
+    document.getElementById('rideForm').onsubmit = async ev => {
+      ev.preventDefault();
+      const f = ev.target, btn = f.querySelector('.primary'); btn.disabled = true;
+      const row = { customer_id: me.id, pickup: f.pickup.value.trim(), dropoff: f.dropoff.value.trim() };
+      if(geo){ row.pickup_lat = geo.lat; row.pickup_lng = geo.lng; }
+      const { error } = await sb.from('rides').insert(row);
+      if(error){ btn.disabled = false; return toast(/active|one/i.test(error.message) ? 'لديك طلب نشط بالفعل.' : 'تعذّر إرسال الطلب: ' + error.message); }
+      renderCustomer();
+    };
+    return;
+  }
+
+  if(r.status === 'searching' && Date.now() - new Date(r.created_at).getTime() > SEARCH_TIMEOUT){
+    const { error: e2 } = await sb.rpc('mark_no_driver', { p_ride_id: r.id });
+    if(!e2) r.status = 'no_driver';
+  }
+
+  let contact = '';
+  if(CONFIRMED.includes(r.status)) contact = contactHtml(await getContact(r.id), 'السائق / المكتب');
+
+  let actions = '';
+  if(r.status === 'searching') actions = `<button class="secondary" data-act="cancelRide" data-id="${r.id}">إلغاء الطلب</button>`;
+  if(r.status === 'no_driver') actions = `<button class="primary" data-act="retryRide" data-id="${r.id}">إعادة المحاولة</button><button class="secondary" data-act="cancelRide" data-id="${r.id}">إلغاء الطلب</button>`;
+  if(!ACTIVE.includes(r.status)) actions = `<button class="primary" data-act="dismiss" data-id="${r.id}">طلب جديد</button>`;
+
+  render(shell(`
+    <div class="card">
+      <span class="pill dark">${esc(STATUS[r.status] || r.status)}</span>
+      <p class="mut" style="margin:12px 0 4px">من</p><div style="font-weight:700">${esc(r.pickup)}</div>
+      <p class="mut" style="margin:12px 0 4px">إلى</p><div style="font-weight:700">${esc(r.dropoff)}</div>
+    </div>
+    ${r.status === 'searching' ? `<div class="note">نبحث لك عن أقرب سيارة، يرجى الانتظار…</div>` : ''}
+    ${contact}${actions}`));
+  if(ACTIVE.includes(r.status)) startPoll(renderCustomer, 4000);
+}
+
+/* ---------- واجهة المكتب / السائق ---------- */
+async function renderProvider(){
+  stopPoll();
+  const avail = !!profile.available;
+  const sw = `<button class="switch ${avail?'on':''}" data-act="toggleAvail"><span class="dot"></span>${avail?'متاح':'غير متاح'}</button>`;
+  const tabs = `<div class="tabs"><button class="tab ${ptab==='open'?'on':''}" data-act="ptab" data-v="open">الطلبات المتاحة</button><button class="tab ${ptab==='mine'?'on':''}" data-act="ptab" data-v="mine">رحلاتي</button></div>`;
+  let body = '';
+
+  if(ptab === 'open'){
+    if(!avail){
+      body = `<div class="note">أنت الآن غير متاح. فعّل زر «متاح» في الأعلى لتظهر لك الطلبات.</div>`;
+    } else {
+      const { data, error } = await sb.from('rides').select('*').eq('status','searching').order('created_at',{ascending:true});
+      if(error) return errView(error);
+      body = (data && data.length) ? data.map(r => `
+        <div class="card"><div class="row"><span class="pill">طلب جديد</span><span class="mut">${timeStr(r.created_at)}</span></div>
+        <p class="mut" style="margin:10px 0 2px">من</p><div style="font-weight:700">${esc(r.pickup)}</div>
+        <p class="mut" style="margin:10px 0 2px">إلى</p><div style="font-weight:700">${esc(r.dropoff)}</div>
+        <div class="btns"><button class="fill" data-act="accept" data-id="${r.id}">قبول الطلب</button></div></div>`).join('')
+        : `<div class="center">لا توجد طلبات حالياً</div>`;
+    }
+  } else {
+    const { data, error } = await sb.from('rides').select('*').eq('accepted_by', me.id).order('created_at',{ascending:false}).limit(30);
+    if(error) return errView(error);
+    const next = { accepted:['on_the_way','في الطريق'], on_the_way:['arrived','وصلت إلى الزبون'], arrived:['started','بدأت الرحلة'], started:['completed','انتهت الرحلة'] };
+    const parts = [];
+    for(const r of (data || [])){
+      let c = '';
+      if(CONFIRMED.includes(r.status)) c = contactHtml(await getContact(r.id), 'الزبون');
+      const n = next[r.status];
+      parts.push(`<div class="card"><div class="row"><span class="pill dark">${esc(STATUS[r.status] || r.status)}</span><span class="mut">${timeStr(r.created_at)}</span></div>
+        <p class="mut" style="margin:10px 0 2px">من</p><div style="font-weight:700">${esc(r.pickup)}</div>
+        <p class="mut" style="margin:10px 0 2px">إلى</p><div style="font-weight:700">${esc(r.dropoff)}</div>
+        ${c}${n ? `<div class="btns"><button class="fill" data-act="setStatus" data-id="${r.id}" data-v="${n[0]}">${n[1]}</button></div>` : ''}</div>`);
+    }
+    body = parts.length ? parts.join('') : `<div class="center">لا توجد رحلات بعد</div>`;
+  }
+  render(shell(tabs + body, sw));
+  startPoll(renderProvider, 4000);
+}
+
+/* ---------- لوحة الإدارة ---------- */
+async function renderAdmin(){
+  stopPoll();
+  const tabs = `<div class="tabs">
+    <button class="tab ${atab==='users'?'on':''}" data-act="atab" data-v="users">المستخدمون</button>
+    <button class="tab ${atab==='rides'?'on':''}" data-act="atab" data-v="rides">الطلبات</button>
+    <button class="tab ${atab==='settings'?'on':''}" data-act="atab" data-v="settings">الإعدادات</button></div>`;
+  const { data: users, error } = await sb.from('profiles').select('*').order('created_at',{ascending:false});
+  if(error) return errView(error);
+  const names = {}; (users||[]).forEach(u => names[u.id] = u);
+  let body = '';
+
+  if(atab === 'users'){
+    const order = {pending:0, active:1, disabled:2};
+    const list = (users||[]).filter(u => u.role !== 'admin').sort((a,b)=>order[a.status]-order[b.status]);
+    body = list.length ? list.map(u => `
+      <div class="card"><div class="row"><b>${esc(u.full_name)}</b><span class="pill ${u.status==='pending'?'dark':''}">${esc(PSTATUS[u.status])}</span></div>
+      <div class="mut" style="margin-top:6px">${esc(ROLE[u.role])} ${u.phone ? '· <span dir="ltr">'+esc(u.phone)+'</span>' : ''}</div>
+      <div class="btns">
+        ${u.status !== 'active' ? `<button class="fill" data-act="setUser" data-id="${u.id}" data-v="active">تفعيل</button>` : ''}
+        ${u.status !== 'disabled' ? `<button class="danger" data-act="setUser" data-id="${u.id}" data-v="disabled">تعطيل</button>` : ''}
+      </div></div>`).join('') : `<div class="center">لا يوجد مسجّلون بعد</div>`;
+  }
+  else if(atab === 'rides'){
+    const { data: rides, error: e2 } = await sb.from('rides').select('*').order('created_at',{ascending:false}).limit(50);
+    if(e2) return errView(e2);
+    const done = (rides||[]).filter(r => r.status === 'completed').length;
+    body = `<div class="note">الرحلات المكتملة (آخر 50 طلباً): <b>${done}</b></div>` +
+      ((rides && rides.length) ? rides.map(r => {
+        const cu = names[r.customer_id], ac = r.accepted_by ? names[r.accepted_by] : null;
+        return `<div class="card"><div class="row"><span class="pill dark">${esc(STATUS[r.status] || r.status)}</span><span class="mut">${timeStr(r.created_at)}</span></div>
+        <div style="margin-top:8px"><b>${esc(r.pickup)}</b> ← <b>${esc(r.dropoff)}</b></div>
+        <div class="mut" style="margin-top:6px">الزبون: ${esc(cu ? cu.full_name : '—')}<br>قبل الطلب: ${esc(ac ? ac.full_name + ' (' + ROLE[ac.role] + ')' : '—')}</div></div>`;
+      }).join('') : `<div class="center">لا توجد طلبات</div>`);
+  }
+  else {
+    const { data: s } = await sb.from('settings').select('*').eq('key','commission_percent').maybeSingle();
+    body = `<div class="card"><h3>نسبة العمولة المقترحة (%)</h3>
+      <p class="mut">للعلم فقط في النسخة الأولى، لا يوجد خصم مالي.</p>
+      <form id="comForm"><input name="v" type="number" min="0" max="100" step="0.5" dir="ltr" value="${esc(s ? s.value : '10')}">
+      <button class="primary" style="margin-top:12px" type="submit">حفظ</button></form></div>`;
+  }
+  render(shell(tabs + body));
+  const cf = document.getElementById('comForm');
+  if(cf) cf.onsubmit = async ev => {
+    ev.preventDefault();
+    const v = String(cf.v.value);
+    const { error } = await sb.from('settings').upsert({ key:'commission_percent', value:v });
+    toast(error ? 'تعذّر الحفظ' : 'تم الحفظ');
+  };
+}
+
+/* ---------- معالج النقرات ---------- */
+document.addEventListener('click', async ev => {
+  const el = ev.target.closest('[data-act]');
+  if(!el) return;
+  const act = el.dataset.act, id = el.dataset.id, v = el.dataset.v;
+  try{
+    if(act === 'toggleAuth'){ authMode = authMode === 'login' ? 'signup' : 'login'; renderAuth(); }
+    else if(act === 'logout'){ stopPoll(); await sb.auth.signOut(); }
+    else if(act === 'reload'){ route((await sb.auth.getSession()).data.session); }
+    else if(act === 'locate'){
+      if(!navigator.geolocation) return toast('المتصفح لا يدعم تحديد الموقع، اكتب العنوان يدوياً.');
+      el.disabled = true; el.textContent = 'جارٍ تحديد الموقع…';
+      navigator.geolocation.getCurrentPosition(p => {
+        geo = { lat:p.coords.latitude, lng:p.coords.longitude };
+        const inp = document.querySelector('#rideForm [name=pickup]');
+        if(inp && !inp.value) inp.value = 'موقعي الحالي';
+        el.disabled = false; el.textContent = 'تم تحديد موقعك ✓';
+      }, () => { el.disabled = false; el.textContent = 'استخدم موقعي الحالي'; toast('تعذّر تحديد الموقع، اكتب العنوان يدوياً.'); }, { enableHighAccuracy:true, timeout:10000 });
+    }
+    else if(act === 'cancelRide'){
+      const { error } = await sb.rpc('cancel_ride', { p_ride_id:id });
+      if(error) toast('لا يمكن إلغاء هذا الطلب الآن.');
+      renderCustomer();
+    }
+    else if(act === 'retryRide'){
+      const { error } = await sb.rpc('retry_ride', { p_ride_id:id });
+      if(error) toast('تعذّرت إعادة المحاولة.');
+      renderCustomer();
+    }
+    else if(act === 'dismiss'){ lsSet('dismissed', id); renderCustomer(); }
+    else if(act === 'toggleAvail'){
+      const nv = !profile.available;
+      const { error } = await sb.from('profiles').update({ available:nv }).eq('id', me.id);
+      if(error) return toast('تعذّر تغيير الحالة.');
+      profile.available = nv; renderProvider();
+    }
+    else if(act === 'ptab'){ ptab = v; renderProvider(); }
+    else if(act === 'accept'){
+      el.disabled = true;
+      const { data, error } = await sb.rpc('accept_ride', { p_ride_id:id });
+      if(error) toast('تعذّر قبول الطلب: ' + error.message);
+      else if(data === true){ toast('تم قبول الطلب'); ptab = 'mine'; }
+      else toast('الطلب لم يعد متاحاً');
+      renderProvider();
+    }
+    else if(act === 'setStatus'){
+      const { error } = await sb.rpc('update_ride_status', { p_ride_id:id, p_status:v });
+      if(error) toast('تعذّر تحديث الحالة.');
+      renderProvider();
+    }
+    else if(act === 'atab'){ atab = v; renderAdmin(); }
+    else if(act === 'setUser'){
+      const { error } = await sb.from('profiles').update({ status:v }).eq('id', id);
+      if(error) toast('تعذّر التحديث.');
+      renderAdmin();
+    }
+  }catch(e){ toast('حدث خطأ غير متوقع.'); }
+});
+
+/* ---------- الإقلاع ---------- */
+if(!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY){
+  renderSetup();
+} else if(!window.supabase){
+  render(`<div class="center">تعذّر تحميل المكتبة. تحقق من الاتصال بالإنترنت وأعد فتح الصفحة.</div>`);
+} else {
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  sb.auth.onAuthStateChange((event, session) => {
+    if(!['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(event)) return;
+    if(event === 'SIGNED_IN' && me && session && session.user.id === me.id && profile) return;
+    setTimeout(() => route(session), 0);
+  });
+}
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+})();
+</script>
+</body>
+</html>
