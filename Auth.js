@@ -10,6 +10,9 @@ function normalizePhone(raw){
   return p;
 }
 
+// هوية الدخول الداخلية المشتقة من رقم الهاتف (لا يُرسل إليها أي بريد)
+const phoneToEmail=phone=>phone.replace(/\D/g,'')+'@wein.invalid';
+
 async function callFunction(name,body){
   const cfg=window.WEIN_CONFIG||{};
   const res=await fetch(`${cfg.SUPABASE_URL}/functions/v1/${name}`,{
@@ -55,7 +58,7 @@ export function renderAuth(app,mode='login',message=''){
 export async function login(db,form){
   const phone=normalizePhone(form.elements.phone.value);
   const password=form.elements.password.value;
-  const {error}=await db.auth.signInWithPassword({phone,password});
+  const {error}=await db.auth.signInWithPassword({email:phoneToEmail(phone),password});
   if(error)throw new Error('رقم الهاتف أو كلمة المرور غير صحيحة.');
 }
 
@@ -67,4 +70,3 @@ export async function activate(db,form){
     password:form.elements.password.value
   });
 }
-  
