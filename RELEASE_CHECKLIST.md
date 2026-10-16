@@ -1,0 +1,11 @@
+# Release checklist
+- [ ] SMS provider decision documented
+- [ ] Migration applied to staging
+- [ ] Edge Function deployed and tested
+- [ ] Activation codes inserted as hashes only
+- [ ] RLS policies audited
+- [ ] Customer ride flow tested
+- [ ] Provider acceptance race tested
+- [ ] Chat privacy tested
+- [ ] Mobile viewport tested
+- [ ] Existing production backup retained

@@ -1,0 +1,1 @@
+export function getClient(){const c=window.WEIN_CONFIG||{};if(!window.supabase)throw new Error('تعذر تحميل مكتبة Supabase. تحقق من الإنترنت.');if(!c.SUPABASE_URL||!c.SUPABASE_ANON_KEY||c.SUPABASE_ANON_KEY.includes('PASTE_'))throw new Error('أضف رابط Supabase والمفتاح العام في config.js.');return window.supabase.createClient(c.SUPABASE_URL,c.SUPABASE_ANON_KEY)}
