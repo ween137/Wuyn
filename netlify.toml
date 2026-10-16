@@ -1,0 +1,25 @@
+[build]
+  publish = "."
+
+# الملفات مرفوعة في الجذر، وهذه القواعد توصلها بالمسارات التي يطلبها index.html
+[[redirects]]
+  from = "/css/:file"
+  to = "/:file"
+  status = 200
+
+[[redirects]]
+  from = "/js/:file"
+  to = "/:file"
+  status = 200
+
+[[redirects]]
+  from = "/assets/:file"
+  to = "/:file"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(self)"
