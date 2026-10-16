@@ -1,0 +1,6 @@
+# Supabase CLI project configuration. Link this folder to your project before deploying.
+project_id = "vrrdoxsbfrqzhisobedn"
+[functions.activate-account]
+verify_jwt = false
+[functions.health]
+verify_jwt = false

@@ -1,0 +1,11 @@
+# Activation flow test checklist
+- [ ] Valid phone + valid unexpired code + strong password creates exactly one account.
+- [ ] Repeating the same code returns an error and creates no second account.
+- [ ] Two parallel redemption requests cannot both consume one code.
+- [ ] Wrong phone, wrong code, expired code, and used code are rejected.
+- [ ] Password shorter than 8 characters is rejected.
+- [ ] Role comes from the server-side activation record, never from the browser payload.
+- [ ] Driver/office accounts are pending and cannot receive rides until approved.
+- [ ] Service-role key is present only in Edge Function environment secrets, never in static files.
+- [ ] Existing customer login and ride workflows still work.
+- [ ] SMS OTP is tested separately only after an SMS provider is configured.

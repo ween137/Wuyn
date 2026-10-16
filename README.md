@@ -1,1 +1,3 @@
-ملفات الواجهة مقسمة إلى وحدات ES modules. افتح المشروع عبر خادم محلي أو استضافة HTTPS؛ لا تتوقع عمل وحدات JavaScript من file:// مباشرة.
+# activate-account
+
+Consumes a private activation record via a restricted RPC, then creates a phone-auth user with a password. Deploy only after reviewing the migration and function. Raw codes are never logged.
