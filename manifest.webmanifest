@@ -1,17 +1,18 @@
 {
-  "name": "وين؟",
+  "name": "وين؟ — تكسي يبرود",
   "short_name": "وين؟",
-  "description": "اطلب سيارة أجرة في يبرود",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "dir": "rtl",
-  "lang": "ar",
-  "background_color": "#000000",
+  "background_color": "#ffffff",
   "theme_color": "#000000",
+  "lang": "ar",
+  "dir": "rtl",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    {
+      "src": "assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
   ]
 }
