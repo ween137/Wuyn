@@ -1,33 +1,45 @@
-import {esc,toast,statusNames} from './utils.js';
-const BACK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
-const SEND='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>';
-export async function openChat({app,db,user,rideId,onBack}){
-  const {data:ride,error}=await db.from('rides').select('*').eq('id',Number(rideId)).maybeSingle();
-  if(error||!ride)throw error||new Error('الرحلة غير موجودة');
-  if(ride.customer_id!==user.id&&ride.accepted_by!==user.id)throw new Error('المحادثة متاحة لطرفي الرحلة فقط');
-  let name='';
-  try{const r=await db.rpc('ride_contact',{p_ride_id:Number(rideId)});name=r.data?.[0]?.full_name||''}catch{}
-  const title=name?`دردشة مع ${esc(name)}`:'محادثة الرحلة';
-  const initial=esc((name||'؟').trim().charAt(0)||'؟');
-  app.innerHTML=`<div class="chat-page"><header class="chat-head"><button class="back" id="chat-back" aria-label="رجوع">${BACK}</button><div class="who">${title}</div><div class="av">${initial}</div></header><div class="chat-info">من: ${esc(ride.pickup)} — إلى: ${esc(ride.dropoff)} · ${esc(statusNames[ride.status]||ride.status)}</div><div id="chat-messages" class="chat-list"></div><form id="chat-form" class="chat-form"><input name="message" maxlength="2000" placeholder="اكتب رسالة…" autocomplete="off" required><button aria-label="إرسال">${SEND}</button></form></div>`;
-  document.querySelector('#chat-back').onclick=onBack;
-  const load=async()=>{
-    const box=document.querySelector('#chat-messages');if(!box)return;
-    const bottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-    const {data,error}=await db.from('ride_messages').select('id,sender_id,body,created_at').eq('ride_id',Number(rideId)).order('created_at').limit(200);
-    if(error){box.innerHTML=`<div class="note">${esc(error.message)}</div>`;return}
-    box.innerHTML=(data||[]).map(m=>`<div class="message ${m.sender_id===user.id?'mine':'theirs'}">${esc(m.body)}<div class="small">${new Date(m.created_at).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'})}</div></div>`).join('')||'<div class="center muted" style="margin:auto">ابدأ المحادثة برسالة</div>';
-    if(bottom||!data?.length)box.scrollTop=box.scrollHeight;
-  };
-  document.querySelector('#chat-form').onsubmit=async e=>{
-    e.preventDefault();
-    const input=e.target.elements.message,body=input.value.trim();
-    if(!body)return;
-    const {error}=await db.from('ride_messages').insert({ride_id:Number(rideId),sender_id:user.id,body});
-    if(error)return toast(error.message);
-    input.value='';load();
-  };
-  await load();
-  const channel=db.channel('ride-chat-'+rideId).on('postgres_changes',{event:'INSERT',schema:'public',table:'ride_messages',filter:'ride_id=eq.'+rideId},load).subscribe();
-  return()=>db.removeChannel(channel);
+import { esc, toast, fmtTime, errMsg } from './utils.js';
+import { ic } from './icons.js';
+
+export let chatOpen = false;
+
+// إشعار الرسائل الجديدة (خارج نافذة المحادثة)
+export function watchMessages(db, rideId, userId, onNew) {
+  const ch = db.channel('msgs-' + rideId + '-' + Math.random().toString(36).slice(2, 6))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_messages', filter: 'ride_id=eq.' + rideId },
+      p => { if (p.new.sender_id !== userId) onNew(p.new); }).subscribe();
+  return () => db.removeChannel(ch);
+}
+
+export function openChat({ db, user, rideId, name = 'المحادثة', phone = '', canSend = true }) {
+  return new Promise(resolve => {
+    chatOpen = true;
+    const ov = document.createElement('div'); ov.className = 'overlay chat'; document.body.appendChild(ov);
+    ov.innerHTML = `<header class="top"><button class="icon-btn" data-x aria-label="رجوع">${ic('back', 22)}</button>
+      <div class="ttl"><b>${esc(name)}</b><small>محادثة الرحلة</small></div>
+      ${phone ? `<a class="icon-btn" href="tel:${esc(phone)}" aria-label="اتصال">${ic('phone', 20)}</a>` : '<span style="width:40px"></span>'}</header>
+      <div id="msgs" class="msgs"></div>
+      <form id="cf" class="composer">${canSend ? `<input name="m" maxlength="500" placeholder="اكتب رسالة…" autocomplete="off" required><button class="send" aria-label="إرسال">${ic('send', 20)}</button>` : '<p class="small center" style="flex:1">انتهت الرحلة، المحادثة للقراءة فقط.</p>'}</form>`;
+    const box = ov.querySelector('#msgs'); const seen = new Set();
+    const bubble = m => `<div class="bub ${m.sender_id === user.id ? 'mine' : 'theirs'}">${esc(m.body)}<small>${fmtTime(m.created_at)}</small></div>`;
+    const add = m => {
+      if (seen.has(m.id)) return; seen.add(m.id);
+      const near = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+      box.querySelector('.empty')?.remove(); box.insertAdjacentHTML('beforeend', bubble(m)); if (near) box.scrollTop = box.scrollHeight;
+    };
+    (async () => {
+      const { data, error } = await db.from('ride_messages').select('id,sender_id,body,created_at').eq('ride_id', rideId).order('created_at').limit(300);
+      if (error) { box.innerHTML = `<p class="small center">${esc(errMsg(error))}</p>`; return; }
+      box.innerHTML = (data?.length ? '' : '<p class="empty small center">ابدأ المحادثة برسالة</p>'); (data || []).forEach(add); box.scrollTop = box.scrollHeight;
+    })();
+    const ch = db.channel('chat-' + rideId + '-' + Math.random().toString(36).slice(2, 6))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_messages', filter: 'ride_id=eq.' + rideId }, p => add(p.new)).subscribe();
+    ov.querySelector('#cf').onsubmit = async e => {
+      e.preventDefault(); const i = e.target.elements.m; const body = i.value.trim(); if (!body) return; i.value = '';
+      const { data, error } = await db.from('ride_messages').insert({ ride_id: rideId, sender_id: user.id, body }).select('id,sender_id,body,created_at').single();
+      if (error) { i.value = body; return toast(/row-level|policy/i.test(error.message) ? 'لا يمكن إرسال رسائل الآن.' : errMsg(error), 'err'); }
+      add(data);
+    };
+    ov.addEventListener('click', e => { if (e.target.closest('[data-x]')) { db.removeChannel(ch); ov.remove(); chatOpen = false; resolve(); } });
+  });
 }

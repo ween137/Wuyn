@@ -1,1 +1,65 @@
-import {getClient} from './supabase.js';import {renderAuth,login,activate} from './auth.js';import {toast,setTheme,toggleTheme,esc} from './utils.js';import {renderCustomer,renderProvider,changeRideStatus} from './rides.js';import {openChat} from './chat.js';import {renderAdmin} from './admin.js';const app=document.querySelector('#app');let db,user,profile,authMode='login',tab='home',adminTab='users',chatCleanup=null;setTheme();function err(e){toast(e?.message||'حدث خطأ');console.error(e)}async function render(session){if(!session){user=null;profile=null;renderAuth(app,authMode);return}user=session.user;const {data,error}=await db.from('profiles').select('*').eq('id',user.id).maybeSingle();if(error)throw error;if(!data){app.innerHTML='<main class="main"><div class="note">ملف الحساب غير موجود. راجع إعدادات قاعدة البيانات.</div><button class="btn" data-action="logout">خروج</button></main>';return}profile=data;if(profile.status!=='active'){app.innerHTML=`<main class="auth"><div class="brand">وين؟</div><div class="card"><h2>الحساب قيد المراجعة</h2><p>حالة الحساب: ${esc(profile.status)}</p><button class="btn full" data-action="refresh">تحديث الحالة</button><button class="btn light full" data-action="logout">تسجيل الخروج</button></div></main>`;return}if(profile.role==='admin')return renderAdmin({app,db,user,tab:adminTab});if(profile.role==='customer')return renderCustomer({app,db,user,profile,tab,render:()=>render({user})});return renderProvider({app,db,user,profile,tab,render:()=>render({user})})}try{db=getClient();db.auth.onAuthStateChange((event,session)=>{if(['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT','TOKEN_REFRESHED','USER_UPDATED'].includes(event))setTimeout(()=>render(session).catch(err),0)});db.auth.getSession().then(({data,error})=>{if(error)throw error;return render(data.session)}).catch(err)}catch(e){renderAuth(app,'login',e.message)}document.addEventListener('submit',async e=>{try{if(e.target.id==='login-form'){e.preventDefault();await login(db,e.target)}if(e.target.id==='activate-form'){e.preventDefault();await activate(db,e.target);authMode='login';renderAuth(app,'login','تم التفعيل. سجّل الدخول برقم الهاتف وكلمة المرور الجديدة.')}}catch(x){err(x)}});document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id,v=b.dataset.value;try{if(a==='auth-mode'){authMode=v;renderAuth(app,authMode)}else if(a==='logout'){await db.auth.signOut();authMode='login';tab='home'}else if(a==='refresh'){const {data}=await db.auth.getSession();await render(data.session)}else if(a==='theme')toggleTheme();else if(a==='history'){tab='orders';const {data}=await db.auth.getSession();await render(data.session)}else if(a==='nav'){tab=v;const {data}=await db.auth.getSession();await render(data.session)}else if(a==='home'){const {data}=await db.auth.getSession();await render(data.session)}else if(a==='chat'){chatCleanup?.();chatCleanup=await openChat({app,db,user,rideId:id,onBack:async()=>{const {data}=await db.auth.getSession();await render(data.session)}})}else if(a==='cancel'){const {error}=await db.rpc('cancel_ride',{p_ride_id:Number(id)});if(error)throw error;toast('تم إلغاء الطلب');const {data}=await db.auth.getSession();await render(data.session)}else if(a==='availability'){const {error}=await db.from('profiles').update({available:!profile.available}).eq('id',user.id);if(error)throw error;profile.available=!profile.available;const {data}=await db.auth.getSession();await render(data.session)}else if(a==='accept'){b.disabled=true;const {data,error}=await db.rpc('accept_ride_broadcast',{p_ride_id:Number(id)});if(error)throw error;toast(data?'تم قبول الرحلة':'سبقك طرف آخر إلى قبولها');const {data:s}=await db.auth.getSession();await render(s.session)}else if(a==='status'){await changeRideStatus(db,id,v);const {data}=await db.auth.getSession();await render(data.session)}else if(a==='admin-tab'){adminTab=v;await renderAdmin({app,db,user,tab:adminTab})}else if(a==='user-status'){const {error}=await db.from('profiles').update({status:v}).eq('id',id);if(error)throw error;await renderAdmin({app,db,user,tab:adminTab})}}catch(x){err(x)}});if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+import { getClient } from './supabase.js';
+import { mountAuth } from './auth.js';
+import { mountCustomer } from './customer.js';
+import { mountProvider } from './provider.js';
+import { renderAdmin } from './admin.js';
+import { setTheme, esc, toast, errMsg } from './utils.js';
+import { haltLocal } from './live.js';
+
+const app = document.querySelector('#app');
+let db, cleanup = null, currentId = null, authMode = 'login', adminTab = 'users', seq = 0;
+setTheme();
+// الخط: تحميل غير معطِّل للعرض
+{ const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap'; document.head.appendChild(l); }
+
+const splash = (t = '') => { app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div>${t ? `<p>${esc(t)}</p>` : '<div class="spin"></div>'}</div>`; };
+const unmount = () => { try { cleanup?.(); } catch { } cleanup = null; };
+
+async function logout() {
+  try { await db.rpc('stop_location'); } catch { }
+  haltLocal();
+  await db.auth.signOut();
+}
+
+async function route(session) {
+  const my = ++seq;
+  if (!session) { currentId = null; unmount(); mountAuth(app, { db, mode: authMode }); return; }
+  if (currentId === session.user.id && cleanup) return; // تجديد الرمز لا يعيد بناء الشاشة
+  currentId = session.user.id; unmount(); splash();
+  let profile = null, err = null;
+  for (let i = 0; i < 3 && !profile; i++) {
+    const { data, error } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+    if (my !== seq) return; err = error; profile = data; if (!profile) await new Promise(r => setTimeout(r, 700));
+  }
+  if (my !== seq) return;
+  const user = session.user;
+  if (!profile) { app.innerHTML = `<div class="auth-wrap"><div class="auth-card"><h2>تعذر تحميل حسابك</h2><p class="sub">${esc(err ? errMsg(err) : 'ملف الحساب غير موجود.')}</p><button class="btn full" id="rt">إعادة المحاولة</button><button class="btn light full" id="lo">تسجيل الخروج</button></div></div>`; app.querySelector('#rt').onclick = () => { currentId = null; route(session); }; app.querySelector('#lo').onclick = logout; return; }
+  if (profile.status !== 'active') { app.innerHTML = `<div class="auth-wrap"><div class="auth-card"><h2>الحساب غير فعّال</h2><p class="sub">حالة الحساب: ${esc(profile.status)}. تواصل مع الإدارة.</p><button class="btn full" id="rt">تحديث</button><button class="btn light full" id="lo">تسجيل الخروج</button></div></div>`; app.querySelector('#rt').onclick = () => { currentId = null; route(session); }; app.querySelector('#lo').onclick = logout; cleanup = () => { }; return; }
+  if (profile.role === 'admin') { cleanup = () => { }; return renderAdmin({ app, db, user, tab: adminTab }); }
+  const ctx = { app, db, user, profile, logout };
+  cleanup = profile.role === 'customer' ? mountCustomer(ctx) : mountProvider(ctx);
+}
+
+try {
+  db = getClient();
+  db.auth.onAuthStateChange((ev, session) => {
+    if (ev === 'INITIAL_SESSION' || ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(() => route(session).catch(e => { console.error(e); toast(errMsg(e), 'err'); }), 0);
+  });
+} catch (e) { mountAuth(app, { db: null, message: e.message }); }
+
+// أزرار لوحة الإدارة (واجهة الإدارة القديمة)
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-action]'); if (!b || !db) return; const a = b.dataset.action;
+  try {
+    const { data: { session } } = await db.auth.getSession(); const user = session?.user;
+    if (a === 'logout') await logout();
+    else if (a === 'admin-tab') { adminTab = b.dataset.value; await renderAdmin({ app, db, user, tab: adminTab }); }
+    else if (a === 'user-status') { const { error } = await db.from('profiles').update({ status: b.dataset.value }).eq('id', b.dataset.id); if (error) throw error; await renderAdmin({ app, db, user, tab: adminTab }); }
+  } catch (x) { toast(errMsg(x), 'err'); }
+});
+
+// حالة الاتصال
+const bar = document.createElement('div'); bar.id = 'offline'; bar.textContent = 'لا يوجد اتصال بالإنترنت'; document.body.appendChild(bar);
+const net = () => bar.classList.toggle('show', !navigator.onLine); addEventListener('online', net); addEventListener('offline', net); net();
+
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').then(r => r.update()).catch(() => { }));
