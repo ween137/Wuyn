@@ -5,12 +5,13 @@ import { mountProvider } from './provider.js';
 import { renderAdmin } from './admin.js';
 import { setTheme, esc, toast, errMsg } from './utils.js';
 import { haltLocal } from './live.js';
+import { ensureSupabase, loadFont } from './loader.js';
+import { mountGuest } from './guest.js';
 
 const app = document.querySelector('#app');
 let db, cleanup = null, currentId = null, authMode = 'login', adminTab = 'users', seq = 0;
 setTheme();
-// الخط: تحميل غير معطِّل للعرض
-{ const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap'; document.head.appendChild(l); }
+loadFont();
 
 const splash = (t = '') => { app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div>${t ? `<p>${esc(t)}</p>` : '<div class="spin"></div>'}</div>`; };
 const unmount = () => { try { cleanup?.(); } catch { } cleanup = null; };
@@ -21,9 +22,11 @@ async function logout() {
   await db.auth.signOut();
 }
 
+const showAuth = (message = '') => mountAuth(app, { db, mode: authMode, message, onGuest: () => { unmount(); cleanup = mountGuest({ app, db, goLogin: m => { authMode = m; unmount(); showAuth(); } }); } });
+
 async function route(session) {
   const my = ++seq;
-  if (!session) { currentId = null; unmount(); mountAuth(app, { db, mode: authMode }); return; }
+  if (!session) { currentId = null; unmount(); showAuth(); return; }
   if (currentId === session.user.id && cleanup) return; // تجديد الرمز لا يعيد بناء الشاشة
   currentId = session.user.id; unmount(); splash();
   let profile = null, err = null;
@@ -40,12 +43,23 @@ async function route(session) {
   cleanup = profile.role === 'customer' ? mountCustomer(ctx) : mountProvider(ctx);
 }
 
-try {
-  db = getClient();
+async function boot() {
+  splash('جارٍ التحميل…');
+  const slow = setTimeout(() => { if (!db) splash('الاتصال بطيء. إن استمر التحميل جرّب VPN أو شبكة أخرى.'); }, 12000);
+  try { await ensureSupabase(); db = getClient(); }
+  catch (e) {
+    clearTimeout(slow);
+    app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div><p>${esc(e.message)}</p><button class="btn" id="rl">إعادة المحاولة</button></div>`;
+    app.querySelector('#rl').onclick = boot; return;
+  }
+  clearTimeout(slow);
   db.auth.onAuthStateChange((ev, session) => {
-    if (ev === 'INITIAL_SESSION' || ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(() => route(session).catch(e => { console.error(e); toast(errMsg(e), 'err'); }), 0);
+    if (ev === 'INITIAL_SESSION' || ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(() => route(session).catch(e => { console.error(e); toast(errMsg(e), 'err'); showFail(e); }), 0);
   });
-} catch (e) { mountAuth(app, { db: null, message: e.message }); }
+}
+function showFail(e) { if (!document.querySelector('.splash')) return; app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div><p>تعذّر تشغيل التطبيق: ${esc(errMsg(e))}</p><button class="btn" id="rl">إعادة التحميل</button></div>`; app.querySelector('#rl').onclick = () => location.reload(); }
+addEventListener('unhandledrejection', ev => console.error(ev.reason));
+boot();
 
 // أزرار لوحة الإدارة (واجهة الإدارة القديمة)
 document.addEventListener('click', async e => {

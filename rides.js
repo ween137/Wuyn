@@ -2,6 +2,7 @@
 import { esc, statusNames, money, fmtKm, fmtDate, fmtTime, toast, errMsg } from './utils.js';
 import { ic } from './icons.js';
 import { createMap } from './map.js';
+import { ensureLeaflet } from './loader.js';
 
 export const STEPS = [['accepted', 'قُبل الطلب'], ['on_the_way', 'في الطريق'], ['arrived', 'وصل'], ['started', 'الرحلة']];
 export function stepper(status) {
@@ -31,7 +32,7 @@ export async function openRoute({ db, ride }) {
     <div class="route-map" id="rmap"></div><div class="route-info" id="rinfo"><div class="spin"></div></div>`;
   let m; ov.querySelector('[data-x]').onclick = () => { m?.destroy(); ov.remove(); };
   try {
-    m = createMap(ov.querySelector('#rmap'), {});
+    await ensureLeaflet(); m = createMap(ov.querySelector('#rmap'), {});
     const { data, error } = await db.rpc('get_ride_track', { p_ride_id: ride.id }); if (error) throw error;
     m.put('a', data.pickup, 'pin', '#1a7f37'); m.put('b', data.dropoff, 'pin', '#c0392b');
     if (data.approach?.length > 1) m.line('ap', data.approach, { color: '#888', weight: 4, dashArray: '2 9' });

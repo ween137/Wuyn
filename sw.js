@@ -1,5 +1,5 @@
-const V = 'ween-v3';
-const LIBS = /^https:\/\/(unpkg\.com|cdn\.jsdelivr\.net|fonts\.(googleapis|gstatic)\.com)\//;
+const V = 'ween-v4';
+const LIBS = /^https:\/\/(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com)\//;
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {
@@ -8,12 +8,11 @@ self.addEventListener('fetch', e => {
   if (u.origin === location.origin) {
     // كود التطبيق: الشبكة أولاً (مهلة 3 ثوانٍ) ثم النسخة المحفوظة
     e.respondWith((async () => {
-      const cache = await caches.open(V);
-      try {
-        const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 3000);
-        const r = await fetch(req, { signal: ctl.signal }); clearTimeout(t);
-        if (r.ok) cache.put(req, r.clone()); return r;
-      } catch { return (await cache.match(req)) || (req.mode === 'navigate' ? await cache.match('/index.html') || await cache.match('/') : Response.error()); }
+      const cache = await caches.open(V), hit = await cache.match(req);
+      const net = fetch(req).then(r => { if (r.ok) cache.put(req, r.clone()); return r; });
+      // إن وُجدت نسخة محفوظة ننتظر الشبكة 3 ثوانٍ فقط؛ وإلا ننتظرها بلا حد
+      if (hit) return Promise.race([net, new Promise(res => setTimeout(() => res(hit), 3000))]).catch(() => hit);
+      try { return await net; } catch { return req.mode === 'navigate' ? (await cache.match('/index.html')) || Response.error() : Response.error(); }
     })());
   } else if (LIBS.test(req.url)) {
     // المكتبات الخارجية: من الذاكرة فوراً وتحديث بالخلفية

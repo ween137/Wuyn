@@ -49,7 +49,7 @@ const FORMS = {
 };
 
 // يرسم شاشة الدخول. onDone() تُستدعى بعد نجاح تسجيل الدخول (الجلسة جاهزة).
-export function mountAuth(app, { db, mode = 'login', message = '', onDone }) {
+export function mountAuth(app, { db, mode = 'login', message = '', onDone, onGuest }) {
   const tab = (m, l) => `<button type="button" class="seg ${mode === m ? 'on' : ''}" data-mode="${m}">${l}</button>`;
   app.innerHTML = `<div class="auth-wrap">
     <div class="auth-hero"><div class="auth-logo">وين؟</div><p>تكسي يبرود في جيبك</p></div>
@@ -57,11 +57,13 @@ export function mountAuth(app, { db, mode = 'login', message = '', onDone }) {
       <div class="segs">${tab('login', 'دخول')}${tab('register', 'حساب جديد')}${tab('activate', 'مكتب / سائق')}</div>
       <div id="auth-msg" class="auth-msg ${message ? 'show' : ''}" role="alert">${esc(message)}</div>
       <form id="auth-form" novalidate>${FORMS[mode]}</form>
+      ${onGuest ? `<div class="or"><span>أو</span></div><button type="button" class="btn light full" id="guest-btn">${ic('eye', 20)} تصفّح كضيف</button><p class="small center">الضيف يتصفح الخريطة فقط ولا يستطيع طلب رحلة.</p>` : ''}
     </div></div>`;
   const form = app.querySelector('#auth-form'), msg = app.querySelector('#auth-msg');
   const show = (t, ok) => { msg.textContent = t; msg.className = 'auth-msg show' + (ok ? ' ok' : ''); };
 
-  app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => mountAuth(app, { db, mode: b.dataset.mode, onDone }));
+  app.querySelector('#guest-btn')?.addEventListener('click', () => onGuest());
+  app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => mountAuth(app, { db, mode: b.dataset.mode, onDone, onGuest }));
   form.querySelectorAll('[data-eye]').forEach(b => b.onclick = () => {
     const i = b.previousElementSibling, h = i.type === 'password'; i.type = h ? 'text' : 'password';
     b.innerHTML = ic(h ? 'eyeoff' : 'eye', 20);

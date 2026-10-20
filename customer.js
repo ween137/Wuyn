@@ -5,6 +5,7 @@ import { buildShell } from './shell.js';
 import { stepper, optChips, stars, rideRow, openRoute, rateSheet, confirmBox, OPT_LABELS } from './rides.js';
 import { openChat, watchMessages, chatOpen } from './chat.js';
 import { openKyc } from './kyc.js';
+import { ensureLeaflet } from './loader.js';
 
 const ACTIVE = ['searching', 'accepted', 'on_the_way', 'arrived', 'started', 'no_driver'];
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
@@ -35,7 +36,11 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     pane.innerHTML = `<div class="stage"><div class="map-full" id="map"></div><div class="center-pin hidden" id="cpin">${pinSvg('#000')}</div>
       <button class="fab" data-act="locate" aria-label="موقعي">${ic('target', 22)}</button><div class="sheet" id="sheet"></div></div>`;
     sheet = $('#sheet');
-    try { map = createMap($('#map'), { center: YABROUD, zoom: 14 }); } catch (e) { $('#map').innerHTML = `<p class="center pad">${esc(errMsg(e))}</p>`; }
+    ensureLeaflet().then(() => {
+      if (!home) return; map = createMap($('#map'), { center: YABROUD, zoom: 14 });
+      if (S.me) { map.put('me', S.me, 'me'); if (!S.ride) map.map.setView(S.me, 15); }
+      syncMap(true); loadTaxis(true);
+    }).catch(e => { const m = $('#map'); if (m) m.innerHTML = `<p class="center pad">${esc(errMsg(e))}</p>`; });
     pane.addEventListener('click', onClick); pane.addEventListener('input', onInput);
     locate(true);
     db.from('customer_identity').select('user_id').eq('user_id', user.id).maybeSingle().then(({ data }) => { S.verified = !!data; draw(true); });

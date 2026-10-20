@@ -287,3 +287,10 @@ body.dark .idcard{background:#2b2410;border-color:#5a4a1a;color:#f0dc99}body.dar
 .main .btn{flex:1}
 .main .btn.danger{background:var(--paper);color:var(--bad);border:1px solid #e8c7c3}
 .main .card .row:last-child{gap:8px}
+.or{display:flex;align-items:center;gap:10px;margin:18px 0 12px;color:var(--muted);font-size:13px}
+.or:before,.or:after{content:"";flex:1;height:1px;background:var(--line)}
+.guest-cta{display:flex;gap:10px;margin-top:10px}.guest-cta>*{flex:1}
+.guest-note{display:flex;gap:10px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:11px 12px;margin:8px 0;font-size:13px;font-weight:700}
+.splash p{max-width:300px;text-align:center;line-height:1.7;color:#bdbdc4}
+.splash .btn{background:#fff;color:#000}
+.guest-cta .btn{margin:0}
