@@ -1,5 +1,5 @@
 import { getClient } from './supabase.js';
-import { mountAuth } from './auth.js';
+import { mountAuth } from './signin.js';
 import { mountCustomer } from './customer.js';
 import { mountProvider } from './provider.js';
 import { renderAdmin } from './admin.js';
