@@ -8,6 +8,7 @@ export function createMap(el, { center = DEFAULT, zoom = 14 } = {}) {
   map.attributionControl.setPrefix('');
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap', updateWhenIdle: true, keepBuffer: 3 }).addTo(map);
   const items = {};
+  const animate = (m, to) => { const from = m.getLatLng(), t0 = performance.now(), D = 1200; cancelAnimationFrame(m._raf); const step = now => { const p = Math.min(1, (now - t0) / D); m.setLatLng([from.lat + (to[0] - from.lat) * p, from.lng + (to[1] - from.lng) * p]); if (p < 1) m._raf = requestAnimationFrame(step); }; m._raf = requestAnimationFrame(step); };
   const icon = (html, size, anchor, cls = '') => L.divIcon({ html, className: 'mk ' + cls, iconSize: size, iconAnchor: anchor });
   const api = {
     map,
@@ -18,12 +19,17 @@ export function createMap(el, { center = DEFAULT, zoom = 14 } = {}) {
       return items[key];
     },
     remove(key) { if (items[key]) { map.removeLayer(items[key]); delete items[key]; } },
-    // مجموعة سيارات قريبة: تحديث تفاضلي بدون وميض
-    syncCars(list) {
+    // سيارات/مكاتب: تحديث تفاضلي مع حركة سلسة، والنقر يستدعي onTap(عنصر)
+    syncCars(list, onTap) {
       const keep = new Set();
-      for (const t of list) { const k = 'taxi:' + t.k; keep.add(k); api.put(k, [t.lat, t.lng], 'car', t.role === 'office' ? '#b8892e' : '#111'); }
+      for (const t of list) {
+        const k = 'taxi:' + t.k; keep.add(k); const ll = [t.lat, t.lng], m = items[k];
+        if (m) { m._t = t; animate(m, ll); }
+        else { const mk = api.put(k, ll, 'car', t.role === 'office' ? '#b8892e' : '#111'); mk._t = t; if (onTap) mk.on('click', () => onTap(mk._t)); }
+      }
       Object.keys(items).filter(k => k.startsWith('taxi:') && !keep.has(k)).forEach(api.remove);
     },
+    flyTo(ll, z = 16) { map.setView(ll, z); },
     line(key, pts, opts = {}) {
       if (items[key]) map.removeLayer(items[key]);
       if (!pts || pts.length < 2) { delete items[key]; return; }

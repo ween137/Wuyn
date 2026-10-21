@@ -6,6 +6,7 @@ import { stepper, optChips, stars, rideRow, openRoute, rateSheet, confirmBox, OP
 import { openChat, watchMessages, chatOpen } from './chat.js';
 import { openKyc } from './kyc.js';
 import { ensureLeaflet } from './loader.js';
+import { taxiCard, openDirectory } from './directory.js';
 
 const ACTIVE = ['searching', 'accepted', 'on_the_way', 'arrived', 'started', 'no_driver'];
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
@@ -14,7 +15,7 @@ const etaMin = m => Math.max(1, Math.round(m / 420)); // ~25 كم/س داخل ا
 
 export function mountCustomer({ app, db, user, profile, logout }) {
   const S = { ride: null, mode: 'idle', step: 'pickup', pickup: null, dropoff: null, ptxt: '', dtxt: '', veh: 'economy', pax: 1, opts: {}, notes: '',
-    quotes: [], contact: null, live: null, verified: null, me: null, unread: 0, rating: false, taxis: [], lastHtml: '', gone: false };
+    quotes: [], contact: null, live: null, verified: null, me: null, unread: 0, rating: false, taxis: [], dir: [], sel: null, lastHtml: '', gone: false };
   const dismissed = new Set(); const timers = []; const chans = []; let unwatch = null, map = null, home = null, sheet = null, shell, busyRide = false, taxiAt = 0;
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
   const $ = s => home?.querySelector(s);
@@ -60,9 +61,12 @@ export function mountCustomer({ app, db, user, profile, logout }) {
   async function loadTaxis(force) {
     if (!map || S.ride || Date.now() - taxiAt < (force ? 2500 : 9000)) return; taxiAt = Date.now();
     const c = S.me || map.center();
-    try { S.taxis = await rpc('nearby_taxis', { p_lat: c[0], p_lng: c[1], p_radius_m: 8000 }); } catch { return; }
-    if (!S.ride) { map.syncCars(S.taxis || []); if (S.mode === 'idle') draw(); }
+    try { S.dir = await rpc('taxi_directory', { p_lat: c[0], p_lng: c[1] }) || []; } catch { return; }
+    S.taxis = S.dir.filter(t => t.state === 'live' && t.lat != null);
+    if (S.sel) S.sel = S.dir.find(t => t.k === S.sel.k) || null;
+    if (!S.ride) { if (S.mode === 'idle' || S.mode === 'pick') map.syncCars(S.taxis, onTapTaxi); if (S.mode === 'idle') draw(); }
   }
+  function onTapTaxi(t) { if (S.mode !== 'idle' || S.ride) return; S.sel = S.dir.find(x => x.k === t.k) || t; draw(true); }
 
   /* ---------- تحميل الرحلة ---------- */
   async function loadRide() {
@@ -146,9 +150,11 @@ export function mountCustomer({ app, db, user, profile, logout }) {
       <div class="row2">${S.step === 'pickup' ? `<button class="btn light" data-act="locate">${ic('target', 18)} موقعي</button>` : `<button class="btn light" data-act="backpick">رجوع</button>`}<button class="btn" data-act="confirmpick">تأكيد ${S.step === 'pickup' ? 'الانطلاق' : 'الوجهة'}</button></div>
       <button class="link" data-act="cancelpick">إلغاء</button>`;
     if (S.mode === 'compose') return composeHtml();
+    if (S.sel) return `<div class="handle"></div>${taxiCard(S.sel)}`;
     const n = S.taxis?.length || 0;
     return `<div class="handle"></div><button class="where" data-act="start">${ic('flag', 22)}<span>وين رايح؟</span></button>
-      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'سيارة متاحة' : 'سيارات متاحة'} قربك` : 'لا توجد سيارات ظاهرة على الخريطة الآن'}</p>`;
+      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'سيارة متاحة' : 'سيارات متاحة'} قربك` : 'لا توجد سيارات ظاهرة على الخريطة الآن'}</p>
+      <button class="dirbtn" data-act="dir">${ic('users', 18)} المكاتب والسائقون (${S.dir.length})</button>`;
   }
   function composeHtml() {
     const d = hav(...S.pickup, ...S.dropoff);
@@ -205,7 +211,10 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     const a = b.dataset.act;
     try {
       if (a === 'locate') locate(false);
-      else if (a === 'start') { S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
+      else if (a === 'dir') openDirectory(S.dir, t => { S.sel = t; if (t.state === 'live' && t.lat != null) map?.flyTo([t.lat, t.lng], 16); draw(true); })
+      else if (a === 'tclose') { S.sel = null; draw(true); }
+      else if (a === 'tlocate') { const t = S.dir.find(x => x.k === b.dataset.k); if (t?.lat != null) map?.flyTo([t.lat, t.lng], 17); }
+      else if (a === 'start') { S.sel = null; S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
       else if (a === 'cancelpick' || a === 'cancelcompose') { S.mode = 'idle'; clearRideMarks(); draw(true); loadTaxis(true); }
       else if (a === 'backpick') { S.step = 'pickup'; draw(true); }
       else if (a === 'confirmpick') confirmPick();

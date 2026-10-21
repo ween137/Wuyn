@@ -294,3 +294,8 @@ body.dark .idcard{background:#2b2410;border-color:#5a4a1a;color:#f0dc99}body.dar
 .splash p{max-width:300px;text-align:center;line-height:1.7;color:#bdbdc4}
 .splash .btn{background:#fff;color:#000}
 .guest-cta .btn{margin:0}
+.tcard{padding:4px 0}
+.avatar-s.gold{background:var(--gold);color:#2b1f00}
+.mk.car{cursor:pointer}
+.dirbtn{display:flex;align-items:center;gap:8px;justify-content:center;width:100%;margin-top:10px;background:none;border:1px dashed var(--line);border-radius:14px;padding:11px;font-weight:700;color:var(--muted)}
+.tcard small{display:block}.tcard .row{gap:12px}
