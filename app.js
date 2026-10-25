@@ -2,7 +2,7 @@ import { getClient } from './supabase.js';
 import { mountAuth } from './signin.js';
 import { mountCustomer } from './customer.js';
 import { mountProvider } from './provider.js';
-import { mountAdmin } from './admin.js';
+import { mountAdmin } from './dashboard.js';
 import { setTheme, esc, toast, errMsg } from './utils.js';
 import { haltLocal } from './live.js';
 import { ensureSupabase, loadFont } from './loader.js';
