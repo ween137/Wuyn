@@ -1,17 +1,19 @@
 // عناصر مشتركة بين شاشات الزبون والسائق
-import { esc, statusNames, money, fmtKm, fmtDate, fmtTime, toast, errMsg } from './utils.js';
+import { esc, statusNames, stName, sizeNames, money, fmtKm, fmtDate, fmtTime, toast, errMsg } from './utils.js';
 import { ic } from './icons.js';
 import { createMap } from './map.js';
 import { ensureLeaflet } from './loader.js';
 
 export const STEPS = [['accepted', 'قُبل الطلب'], ['on_the_way', 'في الطريق'], ['arrived', 'وصل'], ['started', 'الرحلة']];
-export function stepper(status) {
-  const i = STEPS.findIndex(s => s[0] === status);
-  return `<div class="stepper">${STEPS.map((s, k) => `<div class="stp ${k < i ? 'done' : k === i ? 'now' : ''}"><i>${k < i ? ic('check', 12) : ''}</i><span>${s[1]}</span></div>`).join('')}</div>`;
+export const STEPS_D = [['accepted', 'قُبل الطلب'], ['on_the_way', 'للاستلام'], ['arrived', 'عند الاستلام'], ['started', 'للتسليم']];
+export function stepper(status, kind = 'taxi') {
+  const ST = kind === 'delivery' ? STEPS_D : STEPS, i = ST.findIndex(s => s[0] === status);
+  return `<div class="stepper">${ST.map((s, k) => `<div class="stp ${k < i ? 'done' : k === i ? 'now' : ''}"><i>${k < i ? ic('check', 12) : ''}</i><span>${s[1]}</span></div>`).join('')}</div>`;
 }
 export const OPT_LABELS = { luggage: ['bag', 'أمتعة'], ac: ['snow', 'تكييف'], child_seat: ['baby', 'مقعد أطفال'], pets: ['paw', 'حيوان أليف'] };
 export function optChips(r) {
   const o = r.options || {};
+  if (r.kind === 'delivery') return `<span class="chip">${ic('box', 14)} ${esc(r.item || 'طلب')}</span>` + (o.size ? `<span class="chip">حجم ${sizeNames[o.size] || ''}</span>` : '') + `<span class="chip">${ic(r.vehicle_type === 'car' ? 'car' : 'motor', 14)} ${r.vehicle_type === 'car' ? 'بسيارة' : 'بمتور'}</span>`;
   const c = Object.keys(OPT_LABELS).filter(k => o[k]).map(k => `<span class="chip">${ic(OPT_LABELS[k][0], 14)} ${OPT_LABELS[k][1]}</span>`);
   if (r.passengers > 1) c.unshift(`<span class="chip">${ic('users', 14)} ${r.passengers} ركاب</span>`);
   return c.join('');
@@ -20,8 +22,8 @@ export const stars = (n, size = 14) => n ? `<span class="stars">${ic('star', siz
 
 export function rideRow(r, { who = '' } = {}) {
   const cls = r.status === 'completed' ? 'ok' : (r.status === 'cancelled' || r.status === 'no_driver') ? 'bad' : 'live';
-  return `<button class="ride-row" data-ride="${r.id}"><div class="rr-top"><span class="pill ${cls}">${esc(statusNames[r.status] || r.status)}</span><small>${fmtDate(r.created_at)} · ${fmtTime(r.created_at)}</small></div>
-    <div class="rr-route"><span>${ic('pin', 14)} ${esc(r.pickup)}</span><span>${ic('flag', 14)} ${esc(r.dropoff)}</span></div>
+  return `<button class="ride-row" data-ride="${r.id}"><div class="rr-top"><span class="pill ${cls}">${esc(stName(r.status, r.kind))}</span>${r.kind === 'delivery' ? `<span class="pill">${ic('box', 12)} توصيل</span>` : ''}<small>${fmtDate(r.created_at)} · ${fmtTime(r.created_at)}</small></div>
+    <div class="rr-route">${r.kind === 'delivery' ? `<span>${ic('box', 14)} ${esc(r.item || '')}</span>` : ''}<span>${ic('pin', 14)} ${esc(r.pickup)}</span><span>${ic('flag', 14)} ${esc(r.dropoff)}</span></div>
     <div class="rr-bot"><b>${r.price ? money(r.price) : ''}</b><small>${who ? esc(who) : ''}${r.distance_m ? ' · ' + fmtKm(r.distance_m) : ''}</small>${r.rating ? stars(r.rating) : ''}</div></button>`;
 }
 
@@ -51,8 +53,8 @@ export function rateSheet({ db, ride }) {
   return new Promise(res => {
     const ov = document.createElement('div'); ov.className = 'modal'; document.body.appendChild(ov);
     let n = 0;
-    ov.innerHTML = `<div class="modal-card"><div class="done-ic">${ic('check', 34)}</div><h3>وصلت بالسلامة</h3><p class="muted">${ride.price ? 'المبلغ: <b>' + money(ride.price) + '</b>' : ''}</p>
-      <p>كيف كانت رحلتك؟</p><div class="rate">${[1, 2, 3, 4, 5].map(i => `<button data-s="${i}" aria-label="${i}">${ic('star', 34)}</button>`).join('')}</div>
+    ov.innerHTML = `<div class="modal-card"><div class="done-ic">${ic('check', 34)}</div><h3>${ride.kind === 'delivery' ? 'تم التسليم' : 'وصلت بالسلامة'}</h3><p class="muted">${ride.price ? 'المبلغ: <b>' + money(ride.price) + '</b>' : ''}</p>
+      <p>${ride.kind === 'delivery' ? 'كيف كانت الخدمة؟' : 'كيف كانت رحلتك؟'}</p><div class="rate">${[1, 2, 3, 4, 5].map(i => `<button data-s="${i}" aria-label="${i}">${ic('star', 34)}</button>`).join('')}</div>
       <input id="rc" maxlength="200" placeholder="ملاحظة (اختياري)"><button class="btn full big" id="rs" disabled>إرسال التقييم</button><button class="btn light full" id="rk">تخطّي</button></div>`;
     const stars = ov.querySelectorAll('[data-s]');
     stars.forEach(b => b.onclick = () => { n = +b.dataset.s; stars.forEach(x => x.classList.toggle('on', +x.dataset.s <= n)); ov.querySelector('#rs').disabled = false; });

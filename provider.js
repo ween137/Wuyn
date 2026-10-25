@@ -1,22 +1,24 @@
-import { esc, toast, money, fmtKm, fmtTime, fmtDate, ago, errMsg, hav, roleNames, toggleTheme, latin } from './utils.js';
+import { esc, toast, money, fmtKm, fmtTime, fmtDate, ago, errMsg, hav, roleNames, toggleTheme, latin, beep } from './utils.js';
 import { ic } from './icons.js';
 import { buildShell } from './shell.js';
 import { stepper, optChips, stars, rideRow, openRoute, confirmBox } from './rides.js';
 import { openChat, watchMessages, chatOpen } from './chat.js';
-import { startSharing, stopSharing, isSharing, onState, lastPoint } from './live.js';
+import { startSharing, stopSharing, isSharing, onState, lastPoint, lastSent, lastReason } from './live.js';
 
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
 const NEXT = { accepted: ['on_the_way', 'ابدأ التحرك نحو الزبون', 'nav'], on_the_way: ['arrived', 'وصلت إلى الزبون', 'pin'], arrived: ['started', 'بدء الرحلة', 'car'], started: ['completed', 'إنهاء الرحلة', 'check'] };
+const NEXT_D = { accepted: ['on_the_way', 'ابدأ التحرك نحو مكان الاستلام', 'nav'], on_the_way: ['arrived', 'وصلت إلى مكان الاستلام', 'pin'], arrived: ['started', 'استلمت الطلب، انطلق للتسليم', 'box'], started: ['completed', 'تم تسليم الطلب', 'check'] };
 const SUPPORT = '0933712979';
 
 export function mountProvider({ app, db, user, profile, logout }) {
   const P = { ...profile }; const timers = []; const chans = [];
-  const S = { ride: null, contact: null, offers: [], mine: {}, unread: 0, pt: null, sig: '', locErr: '' }; let unwatch = null, home = null, busy = false, lastOfferIds = '';
+  const S = { ride: null, contact: null, offers: [], mine: {}, unread: 0, pt: null, sig: '', locErr: '', today: null, seen: -1 }; let unwatch = null, home = null, busy = false, lastOfferIds = '';
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
-  const label = P.role === 'office' ? 'مكتب' : 'سائق';
+  const myRole = P.vehicle_kind === 'motor' ? 'motor' : P.role, motor = myRole === 'motor';
+  const label = P.role === 'office' ? 'مكتب' : motor ? 'متور' : 'سائق';
 
   const shell = buildShell(app, {
-    subtitle: `${roleNames[P.role] || label} · ${P.full_name || ''}`, start: 'requests',
+    subtitle: `${roleNames[myRole] || label} · ${P.full_name || ''}`, start: 'requests',
     tabs: [['requests', 'الطلبات', 'list'], ['stats', 'الإحصائيات', 'chart'], ['account', 'حسابي', 'user']],
     onShow: (id, pane, first) => { if (id === 'requests') { if (first) initHome(pane); } else if (id === 'stats') renderStats(pane); else renderAccount(pane); },
   });
@@ -24,27 +26,48 @@ export function mountProvider({ app, db, user, profile, logout }) {
   /* ---------- الطلبات ---------- */
   function initHome(pane) {
     home = pane;
-    pane.innerHTML = `<div class="page"><div id="pcard"></div><div id="pmain"></div></div>`;
+    pane.innerHTML = `<div class="page"><div id="pcard"></div><div id="pstats"></div><div id="pmain"></div></div>`;
     pane.addEventListener('click', onClick);
-    onState(s => { if (s.pt) S.pt = s.pt; if (s.err) S.locErr = s.err; drawCard(); });
-    drawCard();
-    chans.push(db.channel('p-offers-' + user.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_offers', filter: 'recipient_id=eq.' + user.id }, () => { try { navigator.vibrate?.([200, 100, 200]); } catch { } refresh(); }).subscribe());
+    let lastDraw = 0;
+    onState(s => { if (s.pt) S.pt = s.pt; if (s.err) S.locErr = s.err; if (Date.now() - lastDraw > 3000 || s.err || s.reason) { lastDraw = Date.now(); drawCard(); } });
+    drawCard(); loadToday();
+    timers.push(setInterval(() => { drawCard(); }, 5000));
+    // أول لمسة: نبدأ مشاركة الموقع تلقائياً إن كنت متاحاً (المتصفح يشترط لمسة لطلب الإذن)
+    const first = () => { if (P.available && !isSharing()) startSharing(db).then(() => { S.locErr = ''; drawCard(); }).catch(e => { S.locErr = /رفض/.test(e.message) ? 'denied' : 'needs'; drawCard(); }); };
+    pane.addEventListener('pointerdown', first, { once: true });
+    chans.push(db.channel('p-offers-' + user.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_offers', filter: 'recipient_id=eq.' + user.id }, () => { beep(); toast('وصلك طلب جديد', 'ok'); refresh(); }).subscribe());
     chans.push(db.channel('p-rides-' + user.id).on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, () => refresh()).subscribe());
     timers.push(setInterval(() => { if (!document.hidden) refresh(); }, 6000));
     if (P.available && !isSharing()) startSharing(db).catch(() => { S.locErr = 'needs'; drawCard(); });
     refresh();
   }
 
+  const REASON = { low_accuracy: 'دقة GPS ضعيفة. اخرج لمكان مفتوح أو شغّل «دقة عالية» في الهاتف.', rpc: 'تعذر إرسال الموقع للخادم.', net: 'لا يوجد اتصال بالإنترنت.', rejected: 'رفض الخادم الموقع.' };
   function drawCard() {
     const el = home?.querySelector('#pcard'); if (!el) return;
-    const sh = isSharing(), inRide = !!S.ride, denied = S.locErr === 'denied';
-    el.innerHTML = `<div class="pcard ${P.available ? 'on' : ''}"><div class="row"><div><b>${P.available ? 'أنت متاح لاستقبال الطلبات' : 'أنت غير متاح'}</b><small>${P.available ? 'تظهر للزبائن القريبين وتصلك الطلبات' : 'فعّل التوفر لتصلك طلبات الزبائن'}</small></div>
-      <button class="switch ${P.available ? 'on' : ''}" data-act="avail" aria-label="التوفر" ${inRide ? 'disabled' : ''}><i></i></button></div>
+    const sh = isSharing(), inRide = !!S.ride, denied = S.locErr === 'denied', ls = lastSent(), reason = lastReason();
+    const ago = ls ? Math.round((Date.now() - ls) / 1000) : null;
+    let v;
+    if (!P.available) v = ['off', 'غير ظاهر للزبائن', 'فعّل التوفر لتصلك الطلبات وتظهر على الخريطة'];
+    else if (!sh) v = ['bad', 'غير ظاهر: مشاركة الموقع متوقفة', 'الزبائن لا يرونك على الخريطة قبل تشغيل الموقع'];
+    else if (reason) v = ['warn', 'موقعك لا يصل', REASON[reason] || ''];
+    else if (ago == null) v = ['warn', 'جارٍ تحديد موقعك…', 'قد يستغرق ثوانٍ في أول مرة'];
+    else if (ago > 90) v = ['warn', 'موقعك متأخر', 'أبقِ التطبيق مفتوحاً والشاشة مضاءة'];
+    else v = ['ok', 'ظاهر للزبائن على الخريطة', `آخر تحديث منذ ${ago} ث`];
+    el.innerHTML = `<div class="pcard v-${v[0]}"><div class="vis v-${v[0]}"><i></i><div><b>${v[1]}</b><small>${esc(v[2])}</small></div></div>
+      <div class="row"><div><b>التوفر لاستقبال الطلبات</b></div><button class="switch ${P.available ? 'on' : ''}" data-act="avail" aria-label="التوفر" ${inRide ? 'disabled' : ''}><i></i></button></div>
       <div class="row loc"><div>${ic('target', 18)} <span>مشاركة الموقع</span> <small class="${sh ? 'g' : 'r'}">${sh ? 'تعمل' : 'متوقفة'}</small></div>
       <button class="switch ${sh ? 'on' : ''}" data-act="loc" aria-label="الموقع"><i></i></button></div>
-      ${inRide && !sh ? `<div class="warn">${ic('warn', 16)} الموقع إجباري أثناء الرحلة. اضغط تشغيل.</div>` : ''}
-      ${denied ? `<div class="warn">${ic('warn', 16)} إذن الموقع مرفوض. افتح إعدادات المتصفح للموقع وفعّل الإذن ثم أعد المحاولة.</div>` : ''}</div>`;
+      ${(P.available && !sh) || (inRide && !sh) ? `<button class="btn full big" data-act="locstart">${ic('target', 20)} تشغيل الموقع الآن</button>` : ''}
+      ${inRide && !sh ? `<div class="warn">${ic('warn', 16)} الموقع إجباري أثناء الرحلة.</div>` : ''}
+      ${denied ? `<div class="warn">${ic('warn', 16)} إذن الموقع مرفوض. من إعدادات المتصفح للموقع (أيقونة القفل بجانب العنوان) اسمح بالموقع ثم اضغط «تشغيل الموقع الآن».</div>` : ''}</div>`;
   }
+  async function loadToday() { try {
+    const sod = new Date(); sod.setHours(0, 0, 0, 0);
+    const { data } = await db.from('rides').select('price').eq('accepted_by', user.id).eq('status', 'completed').gte('completed_at', sod.toISOString());
+    S.today = { n: data?.length || 0, sum: (data || []).reduce((s, r) => s + (r.price || 0), 0) };
+    const el = home?.querySelector('#pstats'); if (el) el.innerHTML = `<div class="stats today"><div><b>${S.today.n}</b><small>رحلات اليوم</small></div><div><b>${S.today.sum.toLocaleString('en-US')}</b><small>ل.س أرباح اليوم</small></div></div>`;
+  } catch { } }
 
   async function refresh() {
     if (busy) return; busy = true;
@@ -55,6 +78,8 @@ export function mountProvider({ app, db, user, profile, logout }) {
       if (r && (!prev || prev.id !== r.id)) { S.contact = null; S.unread = 0; unwatch?.(); unwatch = watchMessages(db, r.id, user.id, () => { if (!chatOpen) { S.unread++; draw(true); } }); try { S.contact = (await rpc('ride_contact', { p_ride_id: r.id }))?.[0]; } catch { } if (!isSharing()) startSharing(db).catch(e => { S.locErr = 'denied'; drawCard(); }); drawCard(); }
       if (!r && prev) { unwatch?.(); unwatch = null; S.contact = null; drawCard(); const { data: fin } = await db.from('rides').select('status,price').eq('id', prev.id).maybeSingle(); if (fin?.status === 'completed') toast('اكتملت الرحلة. ' + money(fin.price), 'ok'); else if (fin?.status === 'cancelled') toast('أُلغيت الرحلة من الزبون.', 'err'); }
       if (!r) await loadOffers();
+      if (!r && S.offers.length > S.seen && S.seen >= 0) beep(); S.seen = r ? S.seen : S.offers.length;
+      if (prev && !r) loadToday();
       draw();
     } catch (e) { console.error(e); } finally { busy = false; }
   }
@@ -72,8 +97,8 @@ export function mountProvider({ app, db, user, profile, logout }) {
     const el = home?.querySelector('#pmain'); if (!el) return;
     const r = S.ride; let html;
     if (r) html = activeHtml(r);
-    else if (!P.available) html = `<div class="empty-st">${ic('car', 44)}<h3>أنت غير متاح</h3><p class="muted">شغّل التوفر في الأعلى لتستقبل طلبات الزبائن القريبة.</p></div>`;
-    else if (!S.offers.length) html = `<div class="empty-st"><div class="pulse"><i></i><i></i>${ic('car', 26)}</div><h3>بانتظار الطلبات</h3><p class="muted">سيصلك إشعار فور وصول طلب جديد. أبقِ الشاشة مفتوحة.</p></div>`;
+    else if (!P.available) html = `<div class="empty-st">${ic(motor ? 'motor' : 'car', 44)}<h3>أنت غير متاح</h3><p class="muted">شغّل التوفر في الأعلى لتستقبل طلبات الزبائن القريبة.</p></div>`;
+    else if (!S.offers.length) html = `<div class="empty-st"><div class="pulse"><i></i><i></i>${ic(motor ? 'motor' : 'car', 26)}</div><h3>بانتظار الطلبات</h3><p class="muted">سيصلك إشعار فور وصول طلب جديد. أبقِ الشاشة مفتوحة.</p></div>`;
     else html = `<h3 class="sec">طلبات الزبائن (${S.offers.length})</h3>` + S.offers.map(offerHtml).join('');
     // لا نُعيد الرسم إذا لم يتغير شيء حتى لا تضيع كتابة السعر
     const sig = html.replace(/\d+ ?د(?=<)/g, '') + (r ? S.unread : '');
@@ -86,20 +111,20 @@ export function mountProvider({ app, db, user, profile, logout }) {
   function offerHtml(r) {
     const mine = S.mine[r.id], d = hav(r.pickup_lat, r.pickup_lng, r.dropoff_lat, r.dropoff_lng), me = S.pt || lastPoint();
     const near = me ? hav(me[0], me[1], r.pickup_lat, r.pickup_lng) : null;
-    return `<div class="offer" data-r="${r.id}"><div class="o-top"><span class="pill ${mine ? 'ok' : 'live'}">${mine ? 'أرسلت عرضاً' : 'طلب جديد'}</span><small>${ago(r.created_at)}</small></div>
-      <div class="o-route"><div>${ic('pin', 16)} <b>${esc(r.pickup)}</b></div><div>${ic('flag', 16)} <b>${esc(r.dropoff)}</b></div></div>
+    return `<div class="offer" data-r="${r.id}"><div class="o-top"><span class="pill ${mine ? 'ok' : 'live'}">${mine ? 'أرسلت عرضاً' : r.kind === 'delivery' ? 'طلب توصيل جديد' : 'طلب جديد'}</span><small>${ago(r.created_at)}</small></div>
+      <div class="o-route">${r.kind === 'delivery' ? `<div class="item">${ic('box', 16)} <b>${esc(r.item || 'طلب')}</b></div>` : ''}<div>${ic('pin', 16)} <small>${r.kind === 'delivery' ? 'استلام: ' : ''}</small><b>${esc(r.pickup)}</b></div><div>${ic('flag', 16)} <small>${r.kind === 'delivery' ? 'تسليم: ' : ''}</small><b>${esc(r.dropoff)}</b></div></div>
       <div class="chips"><span class="chip">${ic('route', 14)} ${fmtKm(d)}</span>${near != null ? `<span class="chip">${ic('target', 14)} يبعد عنك ${fmtKm(near)}</span>` : ''}${optChips(r)}${r.vehicle_type === 'comfort' ? '<span class="chip">مريحة</span>' : ''}${r.notes ? `<span class="chip">${ic('chat', 14)} ${esc(r.notes)}</span>` : ''}</div>
       <div class="o-form"><label>سعرك (ل.س)<input type="text" inputmode="numeric" data-price value="${mine?.price || P.base_fare || ''}" placeholder="مثال: 5000" dir="ltr"></label>
       <label>الوصول (دقيقة)<select data-eta>${[2, 3, 5, 8, 10, 15, 20].map(m => `<option ${((mine?.eta_minutes) || 5) === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label></div>
       <div class="row2"><button class="btn" data-act="quote" data-id="${r.id}">${mine ? 'تعديل العرض' : 'إرسال العرض'}</button>${mine ? `<button class="btn light" data-act="unquote" data-id="${r.id}">سحب</button>` : ''}</div></div>`;
   }
   function activeHtml(r) {
-    const c = S.contact || { full_name: 'الزبون', phone: '' }, nx = NEXT[r.status];
+    const del = r.kind === 'delivery', c = S.contact || { full_name: 'الزبون', phone: '' }, nx = (del ? NEXT_D : NEXT)[r.status];
     const dest = r.status === 'started' ? [r.dropoff_lat, r.dropoff_lng] : [r.pickup_lat, r.pickup_lng];
     const canCancel = r.status !== 'started';
-    return `<div class="active"><div class="row"><h3>رحلة جارية</h3><b class="price">${money(r.price)}</b></div>${stepper(r.status)}
-      <div class="driver"><div class="avatar-s">${esc((c.full_name || '؟').trim()[0])}</div><div class="grow"><b>${esc(c.full_name)}</b><small>${r.passengers} ${r.passengers > 1 ? 'ركاب' : 'راكب'}</small></div></div>
-      <div class="o-route"><div>${ic('pin', 16)} <b>${esc(r.pickup)}</b></div><div>${ic('flag', 16)} <b>${esc(r.dropoff)}</b></div></div>
+    return `<div class="active"><div class="row"><h3>${del ? 'توصيل جارٍ' : 'رحلة جارية'}</h3><b class="price">${money(r.price)}</b></div>${stepper(r.status, r.kind)}
+      <div class="driver"><div class="avatar-s">${esc((c.full_name || '؟').trim()[0])}</div><div class="grow"><b>${esc(c.full_name)}</b><small>${del ? 'صاحب الطلب' : r.passengers + ' ' + (r.passengers > 1 ? 'ركاب' : 'راكب')}</small></div></div>
+      <div class="o-route">${del ? `<div class="item">${ic('box', 16)} <b>${esc(r.item || 'طلب')}</b></div>` : ''}<div>${ic('pin', 16)} <small>${del ? 'استلام: ' : ''}</small><b>${esc(r.pickup)}</b></div><div>${ic('flag', 16)} <small>${del ? 'تسليم: ' : ''}</small><b>${esc(r.dropoff)}</b></div></div>
       <div class="chips">${optChips(r)}${r.notes ? `<span class="chip">${ic('chat', 14)} ${esc(r.notes)}</span>` : ''}</div>
       <button class="btn full big" data-act="next" data-s="${nx[0]}">${ic(nx[2], 20)} ${nx[1]}</button>
       <div class="actions3"><a class="btn light" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${dest[0]},${dest[1]}&travelmode=driving">${ic('nav', 20)} الملاحة</a>${c.phone ? `<a class="btn light" href="tel:${esc(c.phone)}">${ic('phone', 20)} اتصال</a>` : ''}<button class="btn light rel" data-act="chat">${ic('chat', 20)} رسالة${S.unread ? `<em class="badge">${S.unread}</em>` : ''}</button></div>
@@ -111,6 +136,7 @@ export function mountProvider({ app, db, user, profile, logout }) {
     try {
       if (a === 'avail') await toggleAvail(b);
       else if (a === 'loc') await toggleLoc(b);
+      else if (a === 'locstart') { b.disabled = true; try { await startSharing(db); S.locErr = ''; toast('بدأت مشاركة الموقع', 'ok'); } catch (x) { S.locErr = /رفض/.test(x.message) ? 'denied' : 'needs'; throw x; } finally { drawCard(); } }
       else if (a === 'quote') await sendQuote(b);
       else if (a === 'unquote') { await rpc('withdraw_quote', { p_ride_id: +b.dataset.id }); toast('تم سحب العرض'); await refresh(); draw(true); }
       else if (a === 'next') await nextStatus(b);
@@ -184,7 +210,7 @@ export function mountProvider({ app, db, user, profile, logout }) {
   function renderAccount(pane) {
     const car = [P.vehicle_make, P.vehicle_model, P.vehicle_year, P.vehicle_color].filter(Boolean).join(' ');
     pane.innerHTML = `<div class="page acc"><div class="avatar">${esc((P.full_name || '؟').trim()[0])}</div><h2 class="ctr">${esc(P.full_name)}</h2><p class="ph-no">${esc(P.phone || '')}</p>
-      <div class="card"><div class="row"><span>الصفة</span><b>${esc(roleNames[P.role] || '')}</b></div>${car ? `<div class="row"><span>السيارة</span><b>${esc(car)}</b></div>` : ''}</div>
+      <div class="card"><div class="row"><span>الصفة</span><b>${esc(roleNames[myRole] || '')}</b></div>${car ? `<div class="row"><span>${motor ? 'الدراجة' : 'السيارة'}</span><b>${esc(car)}</b></div>` : ''}</div>
       <div class="card"><label class="fld"><span>السعر الافتراضي لعروضك (ل.س)</span><input id="bf" inputmode="numeric" dir="ltr" value="${P.base_fare || ''}" placeholder="مثال: 5000"></label><button class="btn full" data-a="bf">حفظ السعر الافتراضي</button><p class="small">يظهر تلقائياً في خانة السعر ويمكنك تغييره لكل طلب.</p></div>
       <div class="menu"><button class="menu-row" data-a="theme">${ic('moon', 22)}<span class="grow">الوضع الليلي</span>${ic('back', 18, 'chev')}</button><a class="menu-row" href="tel:${SUPPORT}">${ic('phone', 22)}<span class="grow">الدعم والمساعدة</span>${ic('back', 18, 'chev')}</a></div>
       <button class="btn-soft" data-a="logout">${ic('logout', 20)} تسجيل الخروج</button></div>`;

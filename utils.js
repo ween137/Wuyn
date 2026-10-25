@@ -1,4 +1,7 @@
-export const roleNames = { customer: 'زبون', driver: 'سائق', office: 'مكتب تكسي', admin: 'مدير النظام' };
+export const roleNames = { customer: 'زبون', driver: 'سائق', motor: 'متور توصيل', office: 'مكتب تكسي', admin: 'مدير النظام' };
+export const sizeNames = { small: 'صغير', medium: 'متوسط', large: 'كبير' };
+const dNames = { searching: 'نبحث عن مندوب', accepted: 'تم قبول الطلب', on_the_way: 'المندوب في الطريق للاستلام', arrived: 'المندوب عند الاستلام', started: 'في الطريق للتسليم', completed: 'تم التسليم', cancelled: 'ملغى', no_driver: 'لم يرد أحد' };
+export const stName = (s, kind) => (kind === 'delivery' ? dNames[s] : statusNames[s]) || s;
 export const statusNames = {
   searching: 'نبحث عن سيارة', accepted: 'تم قبول الطلب', on_the_way: 'السيارة في الطريق إليك',
   arrived: 'وصلت السيارة', started: 'الرحلة جارية', completed: 'اكتملت الرحلة',
@@ -46,4 +49,10 @@ export function errMsg(e) {
 export async function busy(btn, fn) {
   if (btn) { if (btn.disabled) return; btn.disabled = true; btn.classList.add('loading'); }
   try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.classList.remove('loading'); } }
+}
+
+// نغمة قصيرة عند وصول طلب (تحتاج لمسة سابقة من المستخدم حتى يسمح المتصفح)
+let _ac; document.addEventListener('pointerdown', () => { try { _ac ||= new (window.AudioContext || window.webkitAudioContext)(); _ac.resume?.(); } catch {} }, { once: false, passive: true });
+export function beep() {
+  try { if (!_ac) return; const t = _ac.currentTime; [0, .18].forEach((d, i) => { const o = _ac.createOscillator(), g = _ac.createGain(); o.frequency.value = i ? 988 : 784; g.gain.setValueAtTime(.0001, t + d); g.gain.exponentialRampToValueAtTime(.25, t + d + .02); g.gain.exponentialRampToValueAtTime(.0001, t + d + .16); o.connect(g).connect(_ac.destination); o.start(t + d); o.stop(t + d + .17); }); navigator.vibrate?.([200, 100, 200]); } catch {}
 }

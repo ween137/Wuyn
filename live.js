@@ -18,9 +18,12 @@ export async function startSharing(db) {
       const now = Date.now(); if (now - st.last < 4000) return; st.last = now;
       const c = pos.coords;
       try {
-        const { data } = await db.rpc('report_location', { p_lat: c.latitude, p_lng: c.longitude, p_heading: c.heading ?? null, p_speed: c.speed ?? null, p_accuracy: c.accuracy ?? null });
-        st.inRide = !!data?.in_ride; st.lastPt = [c.latitude, c.longitude]; st.onState?.({ sharing: true, inRide: st.inRide, pt: st.lastPt });
-      } catch {}
+        const { data, error } = await db.rpc('report_location', { p_lat: c.latitude, p_lng: c.longitude, p_heading: c.heading ?? null, p_speed: c.speed ?? null, p_accuracy: c.accuracy ?? null });
+        st.lastPt = [c.latitude, c.longitude];
+        if (error) { st.sent = null; st.reason = 'rpc'; st.onState?.({ sharing: true, reason: 'rpc', pt: st.lastPt }); return; }
+        if (data?.ok === false) { st.reason = data.reason || 'rejected'; st.onState?.({ sharing: true, reason: st.reason, pt: st.lastPt }); return; }
+        st.inRide = !!data?.in_ride; st.sent = Date.now(); st.reason = null; st.onState?.({ sharing: true, inRide: st.inRide, pt: st.lastPt, sentAt: st.sent });
+      } catch { st.reason = 'net'; st.onState?.({ sharing: true, reason: 'net' }); }
     }, err => {
       st.err = err.code === 1 ? 'denied' : 'unavailable';
       if (first) { first = false; stopWatch(); reject(new Error(err.code === 1 ? 'تم رفض إذن الموقع. فعّله من إعدادات المتصفح ثم أعد المحاولة.' : 'تعذر تحديد موقعك. تأكد من تشغيل GPS.')); }
@@ -42,3 +45,5 @@ async function requestWake() { try { st.wake = await navigator.wakeLock?.request
 function releaseWake() { try { st.wake?.release(); } catch {} st.wake = null; }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && st.watching && !st.wake) requestWake(); });
 export const lastPoint = () => st.lastPt;
+export const lastSent = () => st.sent || 0;
+export const lastReason = () => st.reason;

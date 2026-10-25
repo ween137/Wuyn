@@ -16,7 +16,7 @@ export function mountGuest({ app, db, goLogin }) {
     onShow: (id, p, first) => {
       if (id === 'map') { if (first) initMap(p); else map?.fix(); }
       else if (first) p.innerHTML = `<div class="page"><h2 class="ph">وين؟ تكسي يبرود</h2>
-        <div class="card"><b>كيف تعمل الخدمة؟</b><ol class="how"><li>تنشئ حساباً وتوثّق هويتك مرة واحدة.</li><li>تحدد الانطلاق والوجهة وتختار خياراتك.</li><li>تصلك أسعار المكاتب والسائقين وتختار الأنسب.</li><li>تتابع السيارة على الخريطة وتراسل السائق.</li></ol></div>
+        <div class="card"><b>كيف تعمل الخدمة؟</b><ol class="how"><li>تنشئ حساباً وتوثّق هويتك مرة واحدة.</li><li>تحدد الانطلاق والوجهة (أو مكان استلام وتسليم طلب توصيل).</li><li>تصلك أسعار المكاتب والسائقين والمتورات وتختار الأنسب.</li><li>تتابع السيارة أو المتور على الخريطة وتراسل المندوب.</li></ol></div>
         <div class="guest-note">${ic('lock', 20)}<span>كضيف يمكنك التصفح فقط. لطلب رحلة أنشئ حساباً.</span></div>
         <div class="guest-cta"><button class="btn big" data-g="register">إنشاء حساب</button><button class="btn light big" data-g="login">تسجيل الدخول</button></div>
         <p class="center small" style="margin-top:14px">للدعم: <a href="tel:${SUPPORT}" dir="ltr">${SUPPORT}</a></p></div>`;
@@ -48,9 +48,10 @@ export function mountGuest({ app, db, goLogin }) {
   function draw() {
     const el = pane?.querySelector('#gsheet'); if (!el) return; const n = taxis.length;
     if (sel) { el.innerHTML = `<div class="handle"></div>${taxiCard(sel)}`; return; }
-    el.innerHTML = `<div class="handle"></div><div class="guest-note">${ic('eye', 20)}<span>أنت تتصفح كضيف. لا يمكنك طلب رحلة قبل إنشاء حساب.</span></div>
-      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'سيارة متاحة' : 'سيارات متاحة'} الآن` : 'لا توجد سيارات ظاهرة الآن'}</p>
-      <button class="dirbtn" data-act="dir">${ic('users', 18)} المكاتب والسائقون (${dir.length})</button>
+    el.innerHTML = `<div class="handle"></div><div class="guest-note">${ic('eye', 20)}<span>أنت تتصفح كضيف. لا يمكنك طلب رحلة أو توصيل قبل إنشاء حساب.</span></div>
+      <div class="filt">${[['driver', 'سيارات'], ['motor', 'متورات'], ['office', 'مكاتب']].map(([k, l]) => `<span class="fchip on">${l} <em>${taxis.filter(t => t.role === k).length}</em></span>`).join('')}</div>
+      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'متاح الآن' : 'متاحون الآن'} على الخريطة` : 'لا أحد ظاهر على الخريطة الآن'}</p>
+      <button class="dirbtn" data-act="dir">${ic('users', 18)} المكاتب والسائقون والمتورات (${dir.length})</button>
       <div class="guest-cta"><button class="btn" data-g="register">إنشاء حساب</button><button class="btn light" data-g="login">دخول</button></div>`;
   }
   return () => { alive = false; clearInterval(timer); map?.destroy(); };

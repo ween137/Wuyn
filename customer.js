@@ -1,4 +1,4 @@
-import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames } from './utils.js';
+import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames, stName } from './utils.js';
 import { ic, pinSvg } from './icons.js';
 import { createMap, YABROUD } from './map.js';
 import { buildShell } from './shell.js';
@@ -14,7 +14,7 @@ const SUPPORT = '0933712979';
 const etaMin = m => Math.max(1, Math.round(m / 420)); // ~25 كم/س داخل المدينة
 
 export function mountCustomer({ app, db, user, profile, logout }) {
-  const S = { ride: null, mode: 'idle', step: 'pickup', pickup: null, dropoff: null, ptxt: '', dtxt: '', veh: 'economy', pax: 1, opts: {}, notes: '',
+  const S = { kind: 'taxi', item: '', dveh: 'motor', size: 'small', filter: 'all', ride: null, mode: 'idle', step: 'pickup', pickup: null, dropoff: null, ptxt: '', dtxt: '', veh: 'economy', pax: 1, opts: {}, notes: '',
     quotes: [], contact: null, live: null, verified: null, me: null, unread: 0, rating: false, taxis: [], dir: [], sel: null, lastHtml: '', gone: false };
   const dismissed = new Set(); const timers = []; const chans = []; let unwatch = null, map = null, home = null, sheet = null, shell, busyRide = false, taxiAt = 0;
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
@@ -64,8 +64,9 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     try { S.dir = await rpc('taxi_directory', { p_lat: c[0], p_lng: c[1] }) || []; } catch { return; }
     S.taxis = S.dir.filter(t => t.state === 'live' && t.lat != null);
     if (S.sel) S.sel = S.dir.find(t => t.k === S.sel.k) || null;
-    if (!S.ride) { if (S.mode === 'idle' || S.mode === 'pick') map.syncCars(S.taxis, onTapTaxi); if (S.mode === 'idle') draw(); }
+    if (!S.ride) { if (S.mode === 'idle' || S.mode === 'pick') map.syncCars(shownTaxis(), onTapTaxi); if (S.mode === 'idle') draw(); }
   }
+  const shownTaxis = () => S.taxis.filter(t => S.filter === 'all' || t.role === S.filter);
   function onTapTaxi(t) { if (S.mode !== 'idle' || S.ride) return; S.sel = S.dir.find(x => x.k === t.k) || t; draw(true); }
 
   /* ---------- تحميل الرحلة ---------- */
@@ -141,22 +142,25 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     const r = S.ride;
     if (r) {
       if (r.status === 'searching') return searchingHtml(r);
-      if (r.status === 'no_driver') return `<div class="handle"></div><div class="empty-st">${ic('clock', 40)}<h3>لم يرد أحد حتى الآن</h3><p class="muted">لم يرسل أي مكتب أو سائق عرضاً. جرّب مرة أخرى أو ألغِ الطلب.</p></div>
+      if (r.status === 'no_driver') return `<div class="handle"></div><div class="empty-st">${ic('clock', 40)}<h3>لم يرد أحد حتى الآن</h3><p class="muted">لم يرسل أي مكتب أو سائق أو متور عرضاً. جرّب مرة أخرى أو ألغِ الطلب.</p></div>
         <button class="btn full big" data-act="retry">إعادة البحث</button><button class="btn light full" data-act="cancel">إلغاء الطلب</button>`;
       if (TRACK.includes(r.status)) return trackHtml(r);
       return `<div class="handle"></div><div class="empty-st"><div class="spin"></div></div>`;
     }
-    if (S.mode === 'pick') return `<div class="handle"></div><h3>${S.step === 'pickup' ? 'حدّد نقطة الانطلاق' : 'حدّد الوجهة'}</h3><p class="muted small">حرّك الخريطة حتى تصبح الدبوس على المكان المطلوب.</p>
+    if (S.mode === 'pick') return `<div class="handle"></div><h3>${S.kind === 'delivery' ? (S.step === 'pickup' ? 'حدّد مكان استلام الطلب' : 'حدّد مكان التسليم') : (S.step === 'pickup' ? 'حدّد نقطة الانطلاق' : 'حدّد الوجهة')}</h3><p class="muted small">حرّك الخريطة حتى تصبح الدبوس على المكان المطلوب.</p>
       <div class="row2">${S.step === 'pickup' ? `<button class="btn light" data-act="locate">${ic('target', 18)} موقعي</button>` : `<button class="btn light" data-act="backpick">رجوع</button>`}<button class="btn" data-act="confirmpick">تأكيد ${S.step === 'pickup' ? 'الانطلاق' : 'الوجهة'}</button></div>
       <button class="link" data-act="cancelpick">إلغاء</button>`;
     if (S.mode === 'compose') return composeHtml();
     if (S.sel) return `<div class="handle"></div>${taxiCard(S.sel)}`;
-    const n = S.taxis?.length || 0;
-    return `<div class="handle"></div><button class="where" data-act="start">${ic('flag', 22)}<span>وين رايح؟</span></button>
-      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'سيارة متاحة' : 'سيارات متاحة'} قربك` : 'لا توجد سيارات ظاهرة على الخريطة الآن'}</p>
-      <button class="dirbtn" data-act="dir">${ic('users', 18)} المكاتب والسائقون (${S.dir.length})</button>`;
+    const live = k => S.taxis.filter(t => k === 'all' || t.role === k).length, n = live('all');
+    const F = [['all', 'الكل'], ['driver', 'سيارات'], ['motor', 'متورات'], ['office', 'مكاتب']];
+    return `<div class="handle"></div><div class="svc"><button class="svc-b" data-act="start" data-kind="taxi">${ic('car', 30)}<b>اطلب سيارة</b><small>تنقّل داخل يبرود</small></button><button class="svc-b alt" data-act="start" data-kind="delivery">${ic('box', 30)}<b>توصيل طلب</b><small>متور أو سيارة</small></button></div>
+      <div class="filt">${F.map(([k, l]) => `<button class="fchip ${S.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l} <em>${live(k)}</em></button>`).join('')}</div>
+      <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'متاح الآن' : 'متاحون الآن'} على الخريطة` : 'لا أحد ظاهر على الخريطة الآن. جرّب بعد قليل أو افتح القائمة.'}</p>
+      <button class="dirbtn" data-act="dir">${ic('users', 18)} كل المكاتب والسائقين والمتورات (${S.dir.length})</button>`;
   }
   function composeHtml() {
+    if (S.kind === 'delivery') return deliveryHtml();
     const d = hav(...S.pickup, ...S.dropoff);
     const opt = k => `<button type="button" class="opt ${S.opts[k] ? 'on' : ''}" data-opt="${k}">${ic(OPT_LABELS[k][0], 18)}<span>${OPT_LABELS[k][1]}</span></button>`;
     const veh = (k, n, d2) => `<button type="button" class="veh ${S.veh === k ? 'selected' : ''}" data-veh="${k}">${ic('car', 30)}<b>${n}</b><span>${d2}</span></button>`;
@@ -171,6 +175,21 @@ export function mountCustomer({ app, db, user, profile, logout }) {
       ${S.verified === false ? `<div class="kyc-banner">${ic('shield', 20)}<span>لطلب رحلة تحتاج توثيق هويتك مرة واحدة.</span></div>` : ''}
       <button class="btn full big" data-act="request">${S.verified === false ? 'وثّق هويتك واطلب' : 'اطلب الآن'}</button><button class="link" data-act="cancelcompose">رجوع</button>`;
   }
+  function deliveryHtml() {
+    const d = hav(...S.pickup, ...S.dropoff);
+    const veh = (k, n, d2, i) => `<button type="button" class="veh ${S.dveh === k ? 'selected' : ''}" data-dveh="${k}">${ic(i, 30)}<b>${n}</b><span>${d2}</span></button>`;
+    const sz = (k, n) => `<button type="button" class="fchip ${S.size === k ? 'on' : ''}" data-size="${k}">${n}</button>`;
+    return `<div class="handle"></div><h3 class="ph2">${ic('box', 20)} توصيل طلب</h3>
+      <input id="item" class="notes" maxlength="150" placeholder="ماذا تريد توصيله؟ (مثال: أكياس خضار، دواء، مفاتيح)" value="${esc(S.item)}">
+      <div class="routebox"><div>${ic('pin', 16)}<input id="ptxt" maxlength="120" value="${esc(S.ptxt)}" placeholder="مكان الاستلام (محل، عنوان)"><button class="mini" data-act="repick" data-step="pickup">${ic('target', 16)}</button></div>
+      <div>${ic('flag', 16)}<input id="dtxt" maxlength="120" value="${esc(S.dtxt)}" placeholder="مكان التسليم واسم المستلم"><button class="mini" data-act="repick" data-step="dropoff">${ic('target', 16)}</button></div></div>
+      <p class="small center">المسافة التقريبية ${fmtKm(d)} · السعر تحدده المتورات وتختار الأنسب</p>
+      <div class="vehicles">${veh('motor', 'متور', 'الأسرع والأرخص', 'motor')}${veh('car', 'سيارة', 'للأحجام الكبيرة', 'car')}</div>
+      <div class="filt">${sz('small', 'حجم صغير')}${sz('medium', 'متوسط')}${sz('large', 'كبير')}</div>
+      <input id="notes" class="notes" maxlength="300" placeholder="ملاحظات (رقم المستلم، الدفع عند التسليم…)" value="${esc(S.notes)}">
+      ${S.verified === false ? `<div class="kyc-banner">${ic('shield', 20)}<span>لطلب توصيل تحتاج توثيق هويتك مرة واحدة.</span></div>` : ''}
+      <button class="btn full big" data-act="request">${S.verified === false ? 'وثّق هويتك واطلب' : 'اطلب التوصيل'}</button><button class="link" data-act="cancelcompose">رجوع</button>`;
+  }
   function searchingHtml(r) {
     const secs = Math.floor((Date.now() - new Date(r.created_at)) / 1000);
     const q = [...S.quotes].sort((a, b) => a.price - b.price);
@@ -178,7 +197,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     const list = q.map((x, i) => `<div class="quote"><div class="q-main"><b>${esc(x.provider_name)}</b><small>${esc(roleNames[x.provider_role] || '')}${x.vehicle_make ? ' · ' + esc([x.vehicle_make, x.vehicle_model, x.vehicle_color].filter(Boolean).join(' ')) : ''}</small>
       <div class="q-tags">${i === 0 && q.length > 1 ? '<span class="tag gold">الأرخص</span>' : ''}${x.eta_minutes != null && x.eta_minutes === minEta && q.length > 1 ? '<span class="tag">الأسرع</span>' : ''}${stars(x.rating_avg)}${x.trips ? `<small>${x.trips} رحلة</small>` : ''}</div></div>
       <div class="q-side"><b class="price">${money(x.price)}</b>${x.eta_minutes != null ? `<small>${ic('clock', 12)} ${x.eta_minutes} د</small>` : ''}<button class="btn sm" data-act="choose" data-q="${x.quote_id}" data-qi='${esc(JSON.stringify({ n: x.provider_name, v: [x.vehicle_make, x.vehicle_model, x.vehicle_year, x.vehicle_color].filter(Boolean).join(' '), r: x.rating_avg }))}'>اختيار</button></div></div>`).join('');
-    return `<div class="handle"></div><div class="srch"><div class="pulse"><i></i><i></i>${ic('car', 26)}</div><div><h3>${q.length ? 'وصلتك عروض' : 'نرسل طلبك للمكاتب والسائقين'}</h3><p class="muted small">${q.length ? 'اختر العرض الأنسب لك' : 'عادةً تصل العروض خلال دقيقة'} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</p></div></div>
+    return `<div class="handle"></div><div class="srch"><div class="pulse"><i></i><i></i>${ic(r.kind === 'delivery' ? 'box' : 'car', 26)}</div><div><h3>${q.length ? 'وصلتك عروض' : r.kind === 'delivery' ? 'نرسل طلبك للمتورات والسائقين' : 'نرسل طلبك للمكاتب والسائقين'}</h3><p class="muted small">${q.length ? 'اختر العرض الأنسب لك' : 'عادةً تصل العروض خلال دقيقة'} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</p></div></div>
       <div class="chips">${optChips(r)}</div><div class="quotes">${list}</div>
       <button class="btn light full" data-act="cancel">إلغاء الطلب</button>`;
   }
@@ -190,10 +209,11 @@ export function mountCustomer({ app, db, user, profile, logout }) {
       if (r.status === 'on_the_way' || r.status === 'accepted') { const d = hav(S.live.lat, S.live.lng, r.pickup_lat, r.pickup_lng); eta = `<div class="eta"><b>${etaMin(d)}</b><small>دقيقة تقريباً</small><small>${fmtKm(d)}</small></div>`; }
       else if (r.status === 'started') { const d = hav(S.live.lat, S.live.lng, r.dropoff_lat, r.dropoff_lng); eta = `<div class="eta"><b>${etaMin(d)}</b><small>دقيقة للوصول</small><small>${fmtKm(d)}</small></div>`; }
     }
-    const head = { accepted: 'تم قبول طلبك', on_the_way: 'السيارة في الطريق إليك', arrived: 'وصلت السيارة، تفضّل', started: 'رحلة سعيدة' }[r.status];
+    const del = r.kind === 'delivery';
+    const head = (del ? { accepted: 'تم قبول طلب التوصيل', on_the_way: 'المندوب في الطريق لاستلام الطلب', arrived: 'المندوب وصل لمكان الاستلام', started: 'طلبك في الطريق للتسليم' } : { accepted: 'تم قبول طلبك', on_the_way: 'السيارة في الطريق إليك', arrived: 'وصلت السيارة، تفضّل', started: 'رحلة سعيدة' })[r.status];
     const canCancel = r.status !== 'started';
-    return `<div class="handle"></div><div class="row"><h3>${head}</h3><b class="price">${money(r.price)}</b></div>${stepper(r.status)}
-      ${!fresh ? `<div class="warn">${ic('wifioff', 16)} موقع السيارة لم يتحدّث منذ قليل</div>` : ''}
+    return `<div class="handle"></div><div class="row"><h3>${head}</h3><b class="price">${money(r.price)}</b></div>${stepper(r.status, r.kind)}
+      ${!fresh ? `<div class="warn">${ic('wifioff', 16)} موقع المندوب لم يتحدّث منذ قليل</div>` : ''}
       <div class="driver"><div class="avatar-s">${esc((c.full_name || '؟').trim()[0] || '؟')}</div><div class="grow"><b>${esc(c.full_name)}</b><small>${esc(qi.v || '')}${qi.r ? ' · ' : ''}${qi.r ? stars(qi.r, 12) : ''}</small></div>${eta}</div>
       <div class="chips">${optChips(r)}${r.notes ? `<span class="chip">${ic('chat', 14)} ${esc(r.notes)}</span>` : ''}</div>
       <div class="actions3">${c.phone ? `<a class="btn light" href="tel:${esc(c.phone)}">${ic('phone', 20)} اتصال</a>` : ''}<button class="btn light rel" data-act="chat">${ic('chat', 20)} رسالة${S.unread ? `<em class="badge">${S.unread}</em>` : ''}</button>${canCancel ? `<button class="btn light danger" data-act="cancel">${ic('close', 18)} إلغاء</button>` : ''}</div>`;
@@ -202,19 +222,22 @@ export function mountCustomer({ app, db, user, profile, logout }) {
   /* ---------- الأحداث ---------- */
   function onInput(e) {
     const t = e.target;
-    if (t.id === 'ptxt') S.ptxt = t.value; else if (t.id === 'dtxt') S.dtxt = t.value; else if (t.id === 'notes') S.notes = t.value;
+    if (t.id === 'item') S.item = t.value; else if (t.id === 'ptxt') S.ptxt = t.value; else if (t.id === 'dtxt') S.dtxt = t.value; else if (t.id === 'notes') S.notes = t.value;
   }
   async function onClick(e) {
-    const b = e.target.closest('[data-act],[data-opt],[data-veh]'); if (!b) return;
+    const b = e.target.closest('[data-act],[data-opt],[data-veh],[data-dveh],[data-size]'); if (!b) return;
     if (b.dataset.opt) { S.opts[b.dataset.opt] = !S.opts[b.dataset.opt]; return draw(true); }
     if (b.dataset.veh) { S.veh = b.dataset.veh; return draw(true); }
+    if (b.dataset.dveh) { S.dveh = b.dataset.dveh; return draw(true); }
+    if (b.dataset.size) { S.size = b.dataset.size; return draw(true); }
     const a = b.dataset.act;
     try {
       if (a === 'locate') locate(false);
-      else if (a === 'dir') openDirectory(S.dir, t => { S.sel = t; if (t.state === 'live' && t.lat != null) map?.flyTo([t.lat, t.lng], 16); draw(true); })
+      else if (a === 'filter') { S.filter = b.dataset.f; map?.syncCars(shownTaxis(), onTapTaxi); draw(true); }
+      else if (a === 'dir') openDirectory(S.dir, t => { S.sel = t; if (t.state === 'live' && t.lat != null) map?.flyTo([t.lat, t.lng], 16); draw(true); }, S.filter)
       else if (a === 'tclose') { S.sel = null; draw(true); }
       else if (a === 'tlocate') { const t = S.dir.find(x => x.k === b.dataset.k); if (t?.lat != null) map?.flyTo([t.lat, t.lng], 17); }
-      else if (a === 'start') { S.sel = null; S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
+      else if (a === 'start') { S.kind = b.dataset.kind || 'taxi'; S.sel = null; S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
       else if (a === 'cancelpick' || a === 'cancelcompose') { S.mode = 'idle'; clearRideMarks(); draw(true); loadTaxis(true); }
       else if (a === 'backpick') { S.step = 'pickup'; draw(true); }
       else if (a === 'confirmpick') confirmPick();
@@ -238,17 +261,21 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     }
   }
   async function submit(btn) {
-    if (!S.dtxt.trim()) { toast('اكتب اسم الوجهة ليعرفها السائق.', 'err'); $('#dtxt')?.focus(); return; }
+    const del = S.kind === 'delivery';
+    if (del && S.item.trim().length < 2) { toast('اكتب ماذا تريد توصيله.', 'err'); $('#item')?.focus(); return; }
+    if (!S.dtxt.trim()) { toast(del ? 'اكتب مكان التسليم.' : 'اكتب اسم الوجهة ليعرفها السائق.', 'err'); $('#dtxt')?.focus(); return; }
     btn.disabled = true; const label = btn.textContent;
-    const args = { p_pickup: S.ptxt.trim() || 'نقطة على الخريطة', p_dropoff: S.dtxt.trim(), p_pickup_lat: S.pickup[0], p_pickup_lng: S.pickup[1], p_dropoff_lat: S.dropoff[0], p_dropoff_lng: S.dropoff[1], p_vehicle_type: S.veh, p_passengers: S.pax, p_notes: S.notes.trim() || null, p_options: Object.fromEntries(Object.entries(S.opts).filter(([, v]) => v)) };
+    const base = { p_pickup: S.ptxt.trim() || 'نقطة على الخريطة', p_dropoff: S.dtxt.trim(), p_pickup_lat: S.pickup[0], p_pickup_lng: S.pickup[1], p_dropoff_lat: S.dropoff[0], p_dropoff_lng: S.dropoff[1], p_notes: S.notes.trim() || null };
+    const fn = del ? 'request_delivery' : 'request_ride';
+    const args = del ? { ...base, p_item: S.item.trim(), p_vehicle: S.dveh, p_size: S.size } : { ...base, p_vehicle_type: S.veh, p_passengers: S.pax, p_options: Object.fromEntries(Object.entries(S.opts).filter(([, v]) => v)) };
     try {
-      try { await rpc('request_ride', args); }
+      try { await rpc(fn, args); }
       catch (e) {
         if (e.message !== 'identity_required') throw e;
-        const ok = await openKyc({ db, profile }); if (!ok) throw new Error('يلزم توثيق الهوية لطلب رحلة.');
-        S.verified = true; await rpc('request_ride', args);
+        const ok = await openKyc({ db, profile }); if (!ok) throw new Error('يلزم توثيق الهوية لإرسال الطلب.');
+        S.verified = true; await rpc(fn, args);
       }
-      toast('تم إرسال طلبك', 'ok'); S.mode = 'idle'; S.opts = {}; S.notes = ''; S.pax = 1; clearRideMarks(); await refresh();
+      toast('تم إرسال طلبك', 'ok'); S.mode = 'idle'; S.opts = {}; S.notes = ''; S.pax = 1; S.item = ''; clearRideMarks(); await refresh();
     } catch (e) { toast(errMsg(e), 'err'); btn.disabled = false; btn.textContent = label; }
   }
   async function choose(btn) {

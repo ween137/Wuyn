@@ -40,21 +40,29 @@ const FORMS = {
     ${field('phone', 'رقم الهاتف', 'tel', 'inputmode="tel" placeholder="09xxxxxxxx" required autocomplete="tel" dir="ltr"')}
     ${pass('password', 'كلمة المرور (8 أحرف على الأقل)', 'new-password', 'minlength="8"')}
     <button class="btn full big" data-submit>إنشاء الحساب</button>`,
-  activate: `<h2>تفعيل مكتب أو سائق</h2><p class="sub">رمز التفعيل تحصل عليه من الإدارة</p>
+  activate: `<h2>تفعيل مكتب أو سائق أو متور</h2><p class="sub">رمز التفعيل ترسله لك الإدارة بعد طلبك</p>
     ${field('full_name', 'الاسم', 'text', 'maxlength="100" required autocomplete="name"')}
     ${field('phone', 'رقم الهاتف', 'tel', 'inputmode="tel" placeholder="09xxxxxxxx" required autocomplete="tel" dir="ltr"')}
     ${field('activation_code', 'رمز التفعيل', 'text', 'maxlength="80" required autocomplete="off" inputmode="numeric" dir="ltr"')}
     ${pass('password', 'كلمة مرور جديدة (8 أحرف على الأقل)', 'new-password', 'minlength="8"')}
-    <button class="btn full big" data-submit>تفعيل ودخول</button>`,
+    <button class="btn full big" data-submit>تفعيل ودخول</button>
+    <button type="button" class="link" data-mode="request">ليس لديك رمز؟ اطلب رمز التفعيل</button>`,
+  request: `<h2>اطلب رمز التفعيل</h2><p class="sub">اكتب بياناتك وسنرسل لك الرمز على رقمك</p>
+    ${field('full_name', 'الاسم (أو اسم المكتب)', 'text', 'maxlength="100" required autocomplete="name"')}
+    ${field('phone', 'رقم الهاتف', 'tel', 'inputmode="tel" placeholder="09xxxxxxxx" required autocomplete="tel" dir="ltr"')}
+    <div class="fld"><span>أريد التسجيل كـ</span><div class="kinds"><label><input type="radio" name="wanted" value="driver" checked><b>سائق سيارة</b></label><label><input type="radio" name="wanted" value="motor"><b>متور توصيل</b></label><label><input type="radio" name="wanted" value="office"><b>مكتب تكسي</b></label></div></div>
+    ${field('note', 'ملاحظة (اختياري): نوع السيارة أو المنطقة', 'text', 'maxlength="200"')}
+    <button class="btn full big" data-submit>إرسال الطلب</button>
+    <button type="button" class="link" data-mode="activate">لدي رمز التفعيل</button>`,
 };
 
 // يرسم شاشة الدخول. onDone() تُستدعى بعد نجاح تسجيل الدخول (الجلسة جاهزة).
 export function mountAuth(app, { db, mode = 'login', message = '', onDone, onGuest }) {
-  const tab = (m, l) => `<button type="button" class="seg ${mode === m ? 'on' : ''}" data-mode="${m}">${l}</button>`;
+  const tab = (m, l) => `<button type="button" class="seg ${mode === m || (m === 'activate' && mode === 'request') ? 'on' : ''}" data-mode="${m}">${l}</button>`;
   app.innerHTML = `<div class="auth-wrap">
     <div class="auth-hero"><div class="auth-logo">وين؟</div><p>تكسي يبرود في جيبك</p></div>
     <div class="auth-card">
-      <div class="segs">${tab('login', 'دخول')}${tab('register', 'حساب جديد')}${tab('activate', 'مكتب / سائق')}</div>
+      <div class="segs">${tab('login', 'دخول')}${tab('register', 'حساب جديد')}$${tab('activate', 'مكتب / سائق / متور')}</div>
       <div id="auth-msg" class="auth-msg ${message ? 'show' : ''}" role="alert">${esc(message)}</div>
       <form id="auth-form" novalidate>${FORMS[mode]}</form>
       ${onGuest ? `<div class="or"><span>أو</span></div><button type="button" class="btn light full" id="guest-btn">${ic('eye', 20)} تصفّح كضيف</button><p class="small center">الضيف يتصفح الخريطة فقط ولا يستطيع طلب رحلة.</p>` : ''}
@@ -75,8 +83,17 @@ export function mountAuth(app, { db, mode = 'login', message = '', onDone, onGue
     btn.disabled = true; btn.textContent = 'لحظة…'; msg.className = 'auth-msg';
     const f = form.elements;
     try {
-      const phone = normalizePhone(f.phone.value), password = f.password.value;
+      const phone = normalizePhone(f.phone.value);
       if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error('رقم الهاتف غير صحيح. اكتبه هكذا: 09xxxxxxxx');
+      if (mode === 'request') {
+        const { data, error } = await db.rpc('request_activation', { p_phone: phone, p_name: f.full_name.value.trim(), p_wanted: f.wanted.value, p_note: f.note.value.trim() || null });
+        if (error) throw error;
+        if (data === 'exists') throw new Error('هذا الرقم مسجّل مسبقاً. سجّل الدخول من تبويب «دخول».');
+        form.innerHTML = `<div class="sent">${ic('check', 40)}<h3>وصل طلبك</h3><p>ستتواصل معك الإدارة على الرقم <b dir="ltr">${esc(phone)}</b> وترسل لك رمز التفعيل. بعدها اضغط «لدي رمز التفعيل» وأدخله.</p><button type="button" class="btn full" data-mode="activate">لدي رمز التفعيل</button></div>`;
+        form.querySelector('[data-mode]').onclick = () => mountAuth(app, { db, mode: 'activate', onDone, onGuest });
+        return;
+      }
+      const password = f.password.value;
       if (mode === 'register') await callFunction('register-customer', { phone, password, full_name: f.full_name.value.trim() });
       if (mode === 'activate') await callFunction('activate-account', { phone, password, full_name: f.full_name.value.trim(), activation_code: latin(f.activation_code.value).trim() });
       const { error } = await db.auth.signInWithPassword({ email: phoneToEmail(phone), password });

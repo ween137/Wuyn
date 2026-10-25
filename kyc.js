@@ -59,7 +59,7 @@ export function openKyc({ db, profile }) {
     function stepIntro() {
       ov.innerHTML = `${head('توثيق الهوية')}<main class="main kyc">
         <div class="kyc-ico">${ic('id', 44)}</div>
-        <h2>وثّق هويتك لتطلب رحلة</h2>
+        <h2>وثّق هويتك للمتابعة</h2>
         <p class="muted">مرة واحدة فقط. صوّر وجه الهوية السورية الذي عليه الرقم الوطني.</p>
         <ul class="tips"><li>${ic('check', 16)} ضعها على سطح مستوٍ وفي إضاءة جيدة</li><li>${ic('check', 16)} اجعل كل الحواف ظاهرة والنص واضحاً</li><li>${ic('check', 16)} تجنب انعكاس الضوء</li></ul>
         <div class="privacy">${ic('lock', 18)}<span>تُقرأ الصورة داخل هاتفك ولا تُرسل ولا تُحفظ. نحفظ فقط بصمة مشفرة للرقم الوطني لمنع تكرار الحسابات.</span></div>

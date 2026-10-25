@@ -40,6 +40,9 @@ const P = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
   warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
   wifioff: '<path d="M3 3l18 18M5 12a10 10 0 0 1 4-2.3M2 8a15 15 0 0 1 6-3M12 19h.01M8.5 15.5a5 5 0 0 1 4-1.3"/>',
+  motor: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M9 17h5l3-7h-3"/><path d="M14 10l-2-4H9"/>',
+  box: '<path d="M3 8l9-5 9 5v9l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v9"/>',
+  filter: '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
   taxi: '<path d="M5 16l1.5-6A2 2 0 0 1 8.4 8.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/><path d="M3 16h18v3H3z"/><path d="M10 5h4v3h-4z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>',
 };
 export function ic(name, size = 20, cls = '') {
@@ -48,4 +51,4 @@ export function ic(name, size = 20, cls = '') {
 }
 // علامات الخريطة (HTML داخل divIcon)
 export const pinSvg = (color = '#000') => `<svg width="30" height="38" viewBox="0 0 30 38"><path d="M15 37S3 24 3 14a12 12 0 0 1 24 0c0 10-12 23-12 23z" fill="${color}" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="4.5" fill="#fff"/></svg>`;
-export const carSvg = (color = '#000') => `<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="${color}" stroke="#fff" stroke-width="2"/><g transform="translate(5 5) scale(.95)" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P.car}</g></svg>`;
+export const carSvg = (color = '#000', glyph = 'car') => `<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="${color}" stroke="#fff" stroke-width="2"/><g transform="translate(5 5) scale(.95)" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[glyph] || P.car}</g></svg>`;

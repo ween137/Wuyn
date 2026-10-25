@@ -2,14 +2,14 @@ import { getClient } from './supabase.js';
 import { mountAuth } from './signin.js';
 import { mountCustomer } from './customer.js';
 import { mountProvider } from './provider.js';
-import { renderAdmin } from './admin.js';
+import { mountAdmin } from './admin.js';
 import { setTheme, esc, toast, errMsg } from './utils.js';
 import { haltLocal } from './live.js';
 import { ensureSupabase, loadFont } from './loader.js';
 import { mountGuest } from './guest.js';
 
 const app = document.querySelector('#app');
-let db, cleanup = null, currentId = null, authMode = 'login', adminTab = 'users', seq = 0;
+let db, cleanup = null, currentId = null, authMode = 'login', seq = 0;
 setTheme();
 loadFont();
 
@@ -38,7 +38,7 @@ async function route(session) {
   const user = session.user;
   if (!profile) { app.innerHTML = `<div class="auth-wrap"><div class="auth-card"><h2>تعذر تحميل حسابك</h2><p class="sub">${esc(err ? errMsg(err) : 'ملف الحساب غير موجود.')}</p><button class="btn full" id="rt">إعادة المحاولة</button><button class="btn light full" id="lo">تسجيل الخروج</button></div></div>`; app.querySelector('#rt').onclick = () => { currentId = null; route(session); }; app.querySelector('#lo').onclick = logout; return; }
   if (profile.status !== 'active') { app.innerHTML = `<div class="auth-wrap"><div class="auth-card"><h2>الحساب غير فعّال</h2><p class="sub">حالة الحساب: ${esc(profile.status)}. تواصل مع الإدارة.</p><button class="btn full" id="rt">تحديث</button><button class="btn light full" id="lo">تسجيل الخروج</button></div></div>`; app.querySelector('#rt').onclick = () => { currentId = null; route(session); }; app.querySelector('#lo').onclick = logout; cleanup = () => { }; return; }
-  if (profile.role === 'admin') { cleanup = () => { }; return renderAdmin({ app, db, user, tab: adminTab }); }
+  if (profile.role === 'admin') { cleanup = mountAdmin({ app, db, user, logout }); return; }
   const ctx = { app, db, user, profile, logout };
   cleanup = profile.role === 'customer' ? mountCustomer(ctx) : mountProvider(ctx);
 }
@@ -60,17 +60,6 @@ async function boot() {
 function showFail(e) { if (!document.querySelector('.splash')) return; app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div><p>تعذّر تشغيل التطبيق: ${esc(errMsg(e))}</p><button class="btn" id="rl">إعادة التحميل</button></div>`; app.querySelector('#rl').onclick = () => location.reload(); }
 addEventListener('unhandledrejection', ev => console.error(ev.reason));
 boot();
-
-// أزرار لوحة الإدارة (واجهة الإدارة القديمة)
-document.addEventListener('click', async e => {
-  const b = e.target.closest('[data-action]'); if (!b || !db) return; const a = b.dataset.action;
-  try {
-    const { data: { session } } = await db.auth.getSession(); const user = session?.user;
-    if (a === 'logout') await logout();
-    else if (a === 'admin-tab') { adminTab = b.dataset.value; await renderAdmin({ app, db, user, tab: adminTab }); }
-    else if (a === 'user-status') { const { error } = await db.from('profiles').update({ status: b.dataset.value }).eq('id', b.dataset.id); if (error) throw error; await renderAdmin({ app, db, user, tab: adminTab }); }
-  } catch (x) { toast(errMsg(x), 'err'); }
-});
 
 // حالة الاتصال
 const bar = document.createElement('div'); bar.id = 'offline'; bar.textContent = 'لا يوجد اتصال بالإنترنت'; document.body.appendChild(bar);
