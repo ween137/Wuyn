@@ -8,6 +8,7 @@ import { haltLocal } from './live.js';
 import { ensureSupabase, loadFont } from './loader.js';
 import { mountGuest } from './guest.js';
 
+window.__booted = true; try { sessionStorage.removeItem('g-tried'); } catch { }
 const app = document.querySelector('#app');
 let db, cleanup = null, currentId = null, authMode = 'login', seq = 0;
 setTheme();
