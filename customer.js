@@ -1,12 +1,12 @@
-import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames, stName } from './utils.js';
+import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames, stName, beep } from './utils.js';
 import { ic, pinSvg } from './icons.js';
 import { createMap, YABROUD } from './map.js';
 import { buildShell } from './shell.js';
 import { stepper, optChips, stars, rideRow, openRoute, rateSheet, confirmBox, OPT_LABELS } from './rides.js';
-import { openChat, watchMessages, chatOpen } from './chat.js';
+import { openChat, watchMessages, chatOpen, renderInbox, watchInbox } from './chat.js';
 import { openKyc } from './kyc.js';
 import { ensureLeaflet } from './loader.js';
-import { taxiCard, openDirectory } from './directory.js';
+import { taxiCard, openDirectory, dirPage } from './directory.js';
 
 const ACTIVE = ['searching', 'accepted', 'on_the_way', 'arrived', 'started', 'no_driver'];
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
@@ -16,16 +16,18 @@ const etaMin = m => Math.max(1, Math.round(m / 420)); // ~25 كم/س داخل ا
 export function mountCustomer({ app, db, user, profile, logout }) {
   const S = { kind: 'taxi', item: '', dveh: 'motor', size: 'small', filter: 'all', ride: null, mode: 'idle', step: 'pickup', pickup: null, dropoff: null, ptxt: '', dtxt: '', veh: 'economy', pax: 1, opts: {}, notes: '',
     quotes: [], contact: null, live: null, verified: null, me: null, unread: 0, rating: false, taxis: [], dir: [], sel: null, lastHtml: '', gone: false };
-  const dismissed = new Set(); const timers = []; const chans = []; let unwatch = null, map = null, home = null, sheet = null, shell, busyRide = false, taxiAt = 0;
+  const dismissed = new Set(); const timers = []; const chans = []; const unsubs = []; let dirCtl = null; let unwatch = null, map = null, home = null, sheet = null, shell, busyRide = false, taxiAt = 0;
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
   const $ = s => home?.querySelector(s);
 
   /* ---------- الهيكل ---------- */
   shell = buildShell(app, {
     subtitle: 'زبون · ' + (profile.full_name || ''), start: 'home',
-    tabs: [['home', 'الرئيسية', 'home'], ['orders', 'رحلاتي', 'list'], ['account', 'حسابي', 'user']],
+    tabs: [['home', 'الرئيسية', 'home'], ['dir', 'الدليل', 'users'], ['msgs', 'الرسائل', 'chat'], ['orders', 'رحلاتي', 'list'], ['account', 'حسابي', 'user']],
     onShow: (id, pane, first) => {
       if (id === 'home') { if (first) initHome(pane); else map?.fix(); }
+      else if (id === 'dir') renderDir(pane);
+      else if (id === 'msgs') renderInbox(pane, { db, user, role: 'customer', onChange: n => shell?.dot('msgs', n > 0) });
       else if (id === 'orders') renderOrders(pane);
       else renderAccount(pane);
     },
@@ -47,7 +49,16 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     db.from('customer_identity').select('user_id').eq('user_id', user.id).maybeSingle().then(({ data }) => { S.verified = !!data; draw(true); });
     chans.push(db.channel('c-rides-' + user.id).on('postgres_changes', { event: '*', schema: 'public', table: 'rides', filter: 'customer_id=eq.' + user.id }, () => tick()).subscribe());
     timers.push(setInterval(() => { if (!document.hidden) tick(); }, 4000));
+    unsubs.push(watchInbox(db, user.id, () => { if (!chatOpen) { beep(); shell?.dot('msgs', true); } }));
+    db.rpc('chat_inbox').then(({ data }) => shell?.dot('msgs', (data || []).some(x => x.unread > 0)));
     refresh();
+  }
+
+  async function fetchDir() { const c = S.me || map?.center() || YABROUD; S.dir = await rpc('directory_v2', { p_lat: c[0], p_lng: c[1] }) || []; S.taxis = S.dir.filter(t => t.state === 'live' && t.lat != null); if (S.sel) S.sel = S.dir.find(t => t.k === S.sel.k) || null; }
+  async function renderDir(pane) {
+    if (!dirCtl) pane.innerHTML = '<div class="page"><h2 class="ph">المكاتب والسائقون</h2><div class="spin mid"></div></div>';
+    try { await fetchDir(); } catch (e) { if (!dirCtl) { pane.innerHTML = `<div class="page"><p class="center">${esc(errMsg(e))}</p></div>`; return; } }
+    if (dirCtl) dirCtl.refresh(S.dir); else dirCtl = dirPage(pane, S.dir, { onPick: t => { S.sel = t; shell.show('home'); if (t.state === 'live' && t.lat != null) map?.flyTo([t.lat, t.lng], 16); draw(true); } });
   }
 
   function locate(initial) {
@@ -61,9 +72,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
   async function loadTaxis(force) {
     if (!map || S.ride || Date.now() - taxiAt < (force ? 2500 : 9000)) return; taxiAt = Date.now();
     const c = S.me || map.center();
-    try { S.dir = await rpc('taxi_directory', { p_lat: c[0], p_lng: c[1] }) || []; } catch { return; }
-    S.taxis = S.dir.filter(t => t.state === 'live' && t.lat != null);
-    if (S.sel) S.sel = S.dir.find(t => t.k === S.sel.k) || null;
+    try { await fetchDir(); } catch { return; }
     if (!S.ride) { if (S.mode === 'idle' || S.mode === 'pick') map.syncCars(shownTaxis(), onTapTaxi); if (S.mode === 'idle') draw(); }
   }
   const shownTaxis = () => S.taxis.filter(t => S.filter === 'all' || t.role === S.filter);
@@ -247,7 +256,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
       else if (a === 'choose') await choose(b);
       else if (a === 'cancel') { if (await confirmBox('هل تريد إلغاء الطلب؟', 'نعم، ألغِ', 'لا، تابع')) { await rpc('cancel_ride', { p_ride_id: S.ride.id }); toast('تم إلغاء الطلب'); S.ride = null; S.mode = 'idle'; clearRideMarks(); await refresh(); draw(true); loadTaxis(true); } }
       else if (a === 'retry') { await rpc('retry_ride', { p_ride_id: S.ride.id }); await refresh(); }
-      else if (a === 'chat') { S.unread = 0; draw(true); await openChat({ db, user, rideId: S.ride.id, name: S.contact?.full_name || 'السائق', phone: S.contact?.phone || '' }); }
+      else if (a === 'chat') { S.unread = 0; draw(true); await openChat({ db, user, rideId: S.ride.id, name: S.contact?.full_name || (S.ride.kind === 'delivery' ? 'المندوب' : 'السائق'), phone: S.contact?.phone || '', role: 'customer', ride: S.ride, canSend: true }); }
     } catch (x) { toast(errMsg(x), 'err'); }
   }
   function confirmPick() {
@@ -317,5 +326,5 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     };
   }
 
-  return () => { timers.forEach(clearInterval); chans.forEach(c => db.removeChannel(c)); unwatch?.(); map?.destroy(); };
+  return () => { timers.forEach(clearInterval); unsubs.forEach(f => f()); chans.forEach(c => db.removeChannel(c)); unwatch?.(); map?.destroy(); };
 }

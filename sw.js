@@ -1,4 +1,4 @@
-const V = 'ween-v6';
+const V = 'ween-v7';
 const LIBS = /^https:\/\/(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com)\//;
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())));

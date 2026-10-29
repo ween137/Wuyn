@@ -6,6 +6,8 @@ import { createMap, YABROUD } from './map.js';
 import { ensureLeaflet } from './loader.js';
 import { confirmBox } from './rides.js';
 import { normalizePhone } from './signin.js';
+import { openChat } from './chat.js';
+import { starRow } from './directory.js';
 
 const APP_URL = 'https://wuyn.netlify.app';
 const WANT = { driver: 'سائق سيارة', motor: 'متور توصيل', office: 'مكتب تكسي' };
@@ -15,7 +17,7 @@ const tel = p => p ? `<a class="tl" href="tel:${esc(p)}" dir="ltr">${esc(p)}</a>
 const roleOf = p => p.vehicle_kind === 'motor' ? 'motor' : p.role;
 
 export function mountAdmin({ app, db, user, logout }) {
-  const A = { stats: null, rides: [], live: [], people: [], invites: [], reqs: [], rf: { kind: 'all', st: 'all', q: '' }, pf: { role: 'all', q: '' }, rendered: {} };
+  const A = { daily: [], top: [], reviews: [], custs: {}, allRev: false, stats: null, rides: [], live: [], people: [], invites: [], reqs: [], rf: { kind: 'all', st: 'all', q: '' }, pf: { role: 'all', q: '' }, rendered: {} };
   const timers = []; let map = null, shell, alive = true;
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
   const $ = (id) => shell.panes[id];
@@ -35,7 +37,7 @@ export function mountAdmin({ app, db, user, logout }) {
   /* ---------- نظرة عامة ---------- */
   function showOver(pane, first) { if (first) pane.innerHTML = '<div class="page"><h2 class="ph">نظرة عامة</h2><div id="ov"><div class="spin mid"></div></div></div>'; loadOver(); }
   async function loadOver() {
-    try { A.stats = await rpc('admin_stats'); } catch (e) { $('over').querySelector('#ov').innerHTML = `<p class="center">${esc(errMsg(e))}</p>`; return; }
+    try { [A.stats, A.daily, A.top, A.reviews] = await Promise.all([rpc('admin_stats'), rpc('admin_daily', { p_days: 14 }), rpc('admin_top'), rpc('admin_reviews')]); } catch (e) { $('over').querySelector('#ov').innerHTML = `<p class="center">${esc(errMsg(e))}</p>`; return; }
     const s = A.stats, c = (n, l, cls = '', act = '') => `<div class="sc ${cls}" ${act ? `data-act="${act}"` : ''}><b>${n ?? 0}</b><small>${l}</small></div>`;
     $('over').querySelector('#ov').innerHTML = `
       <div class="hero-card"><small>إيراد اليوم (الرحلات المكتملة)</small><b>${money(s.revenue_today)}</b><span>${s.rides_today} طلب اليوم · منها ${s.deliveries_today} توصيل</span></div>
@@ -43,12 +45,26 @@ export function mountAdmin({ app, db, user, logout }) {
       <h3 class="sec">الآن</h3><div class="sgrid">${c(s.active_now, 'طلبات جارية', 'hot', 'goto-rides')}${c(s.online, 'ظاهرون على الخريطة', 'ok', 'goto-live')}</div>
       <h3 class="sec">الطلبات</h3><div class="sgrid">${c(s.rides_total, 'كل الطلبات')}${c(s.deliveries_total, 'طلبات التوصيل')}${c(s.completed, 'مكتملة')}${c(s.cancelled, 'ملغاة / بلا رد')}</div>
       <h3 class="sec">الشبكة</h3><div class="sgrid">${c(s.offices, 'مكاتب')}${c(s.drivers, 'سائقو سيارات')}${c(s.motors, 'متورات')}${c(s.customers, 'زبائن')}${c(s.verified, 'هويات موثّقة')}${c(s.rating_avg ?? '—', 'متوسط التقييم')}</div>
+      <h3 class="sec">آخر 14 يوماً</h3>${chart()}
+      <h3 class="sec">أفضل المنفّذين</h3>${A.top.slice(0, 8).map((t, i) => `<div class="acard slim"><div class="rr-top"><b>${i + 1}. ${esc(t.name)}</b><span class="rate">${starRow(blend(t))}<b>${blend(t).toFixed(1)}</b><small>${t.rating_n ? '(' + t.rating_n + ')' : 'جديد'}</small></span></div>
+        <small>${esc(roleNames[t.role] || '')} · ${t.trips} مكتملة · ${money(t.revenue)}${t.cancels ? ' · ألغى ' + t.cancels : ''}</small></div>`).join('') || '<p class="center muted">لا بيانات بعد.</p>'}
+      <div class="row"><h3 class="sec">التقييمات</h3><button class="link" data-act="allrev">${A.allRev ? 'إخفاء' : 'عرض الكل'}</button></div>
+      ${(A.allRev ? A.reviews : A.reviews.filter(r => r.rating <= 3).slice(0, 5)).map(r => `<div class="acard slim ${r.rating <= 2 ? 'warnc' : ''}"><div class="rr-top"><b>${esc(r.provider || '—')}</b>${starRow(r.rating)}</div><small>من ${esc(r.customer || '—')} · طلب #${r.id}${r.completed_at ? ' · ' + fmtDate(r.completed_at) : ''}</small>${r.comment ? `<p class="note">«${esc(r.comment)}»</p>` : ''}</div>`).join('') || `<p class="center muted">${A.allRev ? 'لا تقييمات بعد.' : 'لا توجد تقييمات منخفضة. ممتاز!'}</p>`}
       <p class="small center">إجمالي الإيراد: <b>${money(s.revenue_total)}</b> · يتحدث تلقائياً كل 15 ثانية</p>`;
+  }
+
+  const blend = t => (4 * 3 + (t.rating || 0) * (t.rating_n || 0)) / (3 + (t.rating_n || 0));
+  function chart() {
+    const d = A.daily; if (!d.length) return '';
+    const mx = Math.max(1, ...d.map(x => x.rides)), mr = Math.max(1, ...d.map(x => x.revenue));
+    return `<div class="card"><div class="bars14">${d.map(x => `<div title="${x.d}: ${x.rides} طلب"><b>${x.rides || ''}</b><i style="height:${Math.max(3, x.rides / mx * 100)}%"></i><small>${x.d.slice(8)}</small></div>`).join('')}</div>
+      <div class="row"><small>الطلبات يومياً</small><small>إيراد 14 يوماً: <b>${money(d.reduce((s, x) => s + x.revenue, 0))}</b></small></div>
+      <div class="bars14 rev">${d.map(x => `<div title="${x.d}: ${x.revenue}"><i style="height:${Math.max(2, x.revenue / mr * 100)}%"></i></div>`).join('')}</div><small>الإيراد يومياً</small></div>`;
   }
 
   /* ---------- الطلبات ---------- */
   function showRides(pane, first) {
-    if (first) pane.innerHTML = `<div class="page"><h2 class="ph">كل الطلبات</h2>
+    if (first) pane.innerHTML = `<div class="page"><div class="row"><h2 class="ph">كل الطلبات</h2><button class="btn light sm" data-act="csv">${ic('list', 16)} تصدير</button></div>
       <input class="notes" id="rq" placeholder="ابحث: اسم، رقم هاتف، مكان، رقم طلب" value="">
       <div class="filt" id="rf1"></div><div class="filt" id="rf2"></div><div id="rlist"><div class="spin mid"></div></div></div>`;
     loadRides();
@@ -79,7 +95,7 @@ export function mountAdmin({ app, db, user, logout }) {
       <div class="chips"><span class="chip">${r.offers} وصلهم الطلب</span><span class="chip">${(r.quotes || []).length} عرض</span>${wait ? `<span class="chip">قُبل بعد ${wait} د</span>` : ''}${dur ? `<span class="chip">مدة ${dur} د</span>` : ''}${!del && r.passengers > 1 ? `<span class="chip">${r.passengers} ركاب</span>` : ''}${!del && r.vehicle_type ? `<span class="chip">${r.vehicle_type === 'comfort' ? 'مريح' : 'اقتصادي'}</span>` : ''}${del ? `<span class="chip">${r.vehicle_type === 'car' ? 'بسيارة' : 'بمتور'}</span>` : ''}${optTxt.map(t => `<span class="chip">${t}</span>`).join('')}${r.cancelled_by ? `<span class="chip bad">ألغاه ${r.cancelled_by === 'customer' ? 'الزبون' : 'المنفّذ'}</span>` : ''}${r.rating ? `<span class="chip stars">${ic('star', 14)} ${r.rating}</span>` : ''}</div>
       ${r.notes ? `<p class="note">${ic('chat', 14)} ${esc(r.notes)}</p>` : ''}${r.rating_comment ? `<p class="note">«${esc(r.rating_comment)}»</p>` : ''}
       ${quotes ? `<details class="qs"><summary>العروض المقدّمة (${r.quotes.length})</summary>${quotes}</details>` : ''}
-      <button class="btn light full" data-act="amap" data-id="${r.id}">${ic('route', 18)} عرض المسار على الخريطة</button></div>`;
+      <div class="row2"><button class="btn light" data-act="amap" data-id="${r.id}">${ic('route', 18)} المسار</button>${r.accepted_at ? `<button class="btn light" data-act="achat" data-id="${r.id}">${ic('chat', 18)} المحادثة</button>` : ''}</div></div>`;
   }
   async function rideMap(r) {
     const ov = document.createElement('div'); ov.className = 'overlay'; document.body.appendChild(ov);
@@ -94,6 +110,14 @@ export function mountAdmin({ app, db, user, logout }) {
       try { const d = await rpc('get_ride_track', { p_ride_id: r.id }); if (d?.trip?.length > 1) { trip = d.trip; pts = [...pts, ...trip]; if (d.approach?.length > 1) m.line('ap', d.approach, { color: '#888', weight: 4, dashArray: '2 9' }); } } catch { }
       m.line('trip', trip || [a, b], trip ? {} : { dashArray: '6 8', color: '#555' }); m.fit(pts); m.fix();
     } catch (e) { ov.querySelector('.route-info').insertAdjacentHTML('afterbegin', `<p class="center">${esc(errMsg(e))}</p>`); }
+  }
+
+  function exportCsv() {
+    const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+    const rows = [['رقم', 'النوع', 'الحالة', 'التاريخ', 'الزبون', 'هاتف الزبون', 'المنفّذ', 'هاتف المنفّذ', 'من', 'إلى', 'مسافة مباشرة (م)', 'مسافة فعلية (م)', 'السعر', 'التقييم']];
+    A.rides.forEach(r => rows.push([r.id, r.kind === 'delivery' ? 'توصيل' : 'تكسي', stName(r.status, r.kind), r.created_at, r.customer_name, r.customer_phone, r.provider_name, r.provider_phone, r.pickup, r.dropoff, r.direct_m, r.distance_m, r.price, r.rating]));
+    const blob = new Blob(['\ufeff' + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wein-rides-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove(); toast('تم تنزيل الملف', 'ok');
   }
 
   /* ---------- الخريطة الحية ---------- */
@@ -125,7 +149,7 @@ export function mountAdmin({ app, db, user, logout }) {
   async function loadPeople() {
     const { data, error } = await db.from('profiles').select('id,full_name,phone,role,status,available,vehicle_kind,area,created_at').order('created_at', { ascending: false }).limit(600);
     if (error) { $('people').querySelector('#plist').innerHTML = `<p class="center">${esc(errMsg(error))}</p>`; return; }
-    A.people = data; drawPeople();
+    A.people = data; try { A.custs = Object.fromEntries((await rpc('admin_customers') || []).map(c => [c.id, c])); } catch { } drawPeople();
   }
   function drawPeople() {
     const p = $('people'), f = A.pf, q = f.q.toLowerCase();
@@ -133,7 +157,7 @@ export function mountAdmin({ app, db, user, logout }) {
     p.querySelector('#pf').innerHTML = R.map(([k, l]) => `<button class="fchip ${f.role === k ? 'on' : ''}" data-act="pr" data-v="${k}">${l} <em>${k === 'all' ? A.people.length : A.people.filter(x => roleOf(x) === k).length}</em></button>`).join('');
     const rows = A.people.filter(x => (f.role === 'all' || roleOf(x) === f.role) && (!q || (x.full_name + ' ' + x.phone).toLowerCase().includes(q)));
     p.querySelector('#plist').innerHTML = rows.map(x => `<div class="acard slim"><div class="rr-top"><b>${esc(x.full_name)}</b><span class="pill ${x.status === 'active' ? 'ok' : 'bad'}">${x.status === 'active' ? 'فعّال' : x.status === 'disabled' ? 'معطّل' : 'معلّق'}</span></div>
-      <small>${esc(roleNames[roleOf(x)] || '')}${x.area ? ' · ' + esc(x.area) : ''} · منذ ${fmtDate(x.created_at)}</small>${tel(x.phone)}
+      <small>${esc(roleNames[roleOf(x)] || '')}${x.area ? ' · ' + esc(x.area) : ''} · منذ ${fmtDate(x.created_at)}</small>${A.custs[x.id] ? `<div class="chips"><span class="chip">${A.custs[x.id].rides} طلب</span><span class="chip">${A.custs[x.id].completed} مكتمل</span>${A.custs[x.id].cancels ? `<span class="chip bad">ألغى ${A.custs[x.id].cancels}</span>` : ''}<span class="chip">${money(A.custs[x.id].spent)}</span><span class="chip ${A.custs[x.id].verified ? '' : 'bad'}">${A.custs[x.id].verified ? 'هوية موثّقة' : 'غير موثّق'}</span></div>` : ''}${tel(x.phone)}
       ${x.role !== 'admin' ? `<button class="btn light sm ${x.status === 'active' ? 'danger' : ''}" data-act="pstatus" data-id="${x.id}" data-s="${x.status === 'active' ? 'disabled' : 'active'}">${x.status === 'active' ? 'تعطيل الحساب' : 'تفعيل الحساب'}</button>` : ''}</div>`).join('') || '<p class="center muted">لا توجد نتائج.</p>';
   }
 
@@ -181,6 +205,9 @@ export function mountAdmin({ app, db, user, logout }) {
     try {
       if (a === 'rk') { A.rf.kind = b.dataset.v; drawRides(); } else if (a === 'rs') { A.rf.st = b.dataset.v; drawRides(); } else if (a === 'pr') { A.pf.role = b.dataset.v; drawPeople(); }
       else if (a === 'goto') shell.show(b.dataset.t); else if (a === 'goto-rides') { A.rf = { kind: 'all', st: 'act', q: '' }; shell.show('rides'); drawRides(); } else if (a === 'goto-live') shell.show('live');
+      else if (a === 'allrev') { A.allRev = !A.allRev; loadOver(); }
+      else if (a === 'csv') exportCsv();
+      else if (a === 'achat') { const r = A.rides.find(x => x.id === +b.dataset.id); await openChat({ db, user, rideId: r.id, name: `طلب #${r.id}: ${r.customer_name || ''} ↔ ${r.provider_name || ''}`, canSend: false, role: 'customer' }); }
       else if (a === 'amap') rideMap(A.rides.find(r => r.id === +b.dataset.id));
       else if (a === 'lfly') { const t = A.live.find(x => x.id === b.dataset.id); if (t) { $('live').querySelector('#amap').scrollIntoView({ behavior: 'smooth' }); map?.flyTo([t.lat, t.lng], 16); } }
       else if (a === 'pstatus') {

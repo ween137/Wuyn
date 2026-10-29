@@ -346,3 +346,38 @@ body.dark .pcard .vis.v-ok{background:#14301c}body.dark .pcard .vis.v-bad{backgr
 .bigcode{font-size:34px;font-weight:900;letter-spacing:4px;background:var(--soft);border-radius:14px;padding:12px;margin:8px 0;text-align:center}
 .btn.sm{padding:8px 12px;font-size:13px}
 body.dark .alert-row{background:#3a2e0e;color:#f3d98a;border-color:#6b5517}
+/* ===== المرحلة 3: تقييم، دليل، رسائل، إدارة ===== */
+.srow{display:inline-flex;gap:1px;direction:ltr;font-size:14px;line-height:1}
+.srow i{font-style:normal;color:#cfcfcf}.srow i.f{color:#f5a623}.srow i.h{background:linear-gradient(90deg,#f5a623 50%,#cfcfcf 50%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.rate{display:inline-flex;align-items:center;gap:5px}.rate b{font-size:13px}.rate small{color:var(--muted);font-size:11px}
+.dsum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 12px}
+.dsum>div{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 4px;text-align:center}
+.dsum b{display:block;font-size:20px}.dsum small{color:var(--muted);font-size:11px}.dsum .on b{color:var(--ok)}
+.dcard{display:flex;gap:12px;width:100%;text-align:right;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:12px;margin-bottom:10px;align-items:flex-start}
+.dcard .grow{min-width:0}.dcard small{color:var(--muted);display:block}
+.filt.sort{align-items:center}.filt.sort small{color:var(--muted)}
+.inbox-row{display:flex;gap:12px;width:100%;text-align:right;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:12px;margin-bottom:10px;align-items:center;position:relative}
+.inbox-row.unr{border-color:var(--ink);background:var(--soft)}
+.inbox-row .grow{min-width:0}.inbox-row .lm{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 6px}
+.inbox-row .badge{position:static;flex:none}
+.chat-strip{display:flex;gap:10px;overflow-x:auto;padding:8px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap}
+.chat-strip span{display:inline-flex;align-items:center;gap:4px}
+.quick{display:flex;gap:8px;overflow-x:auto;padding:8px 12px 0;scrollbar-width:none}
+.quick:empty{display:none}.quick::-webkit-scrollbar{display:none}
+.quick button{flex:none;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700}
+.dsep{text-align:center;margin:6px 0}.dsep span{background:var(--soft);color:var(--muted);font-size:11px;padding:3px 10px;border-radius:999px}
+.tk{display:inline-flex;margin-inline-start:3px;color:var(--muted);vertical-align:middle}.tk.rd{color:#2a7fff}
+.tk svg+svg{margin-inline-start:-7px}
+.locmsg{display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none}.locmsg small{display:block;opacity:.7}
+.chat-empty{text-align:center;color:var(--muted);padding:40px 20px}
+.composer .icon-btn.lg{flex:none;background:var(--soft);border:0}
+.bars14{display:flex;align-items:flex-end;gap:3px;height:90px;margin-bottom:8px}
+.bars14>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:2px}
+.bars14 b{font-size:9px}.bars14 small{font-size:9px;color:var(--muted)}
+.bars14 i{width:100%;background:var(--ink);border-radius:4px 4px 0 0;display:block}
+.bars14.rev{height:50px}.bars14.rev i{background:#e8590c}
+.hist{display:grid;grid-template-columns:34px 1fr 28px;gap:8px;align-items:center;margin:4px 0}
+.hist>div{height:8px;background:var(--soft);border-radius:8px;overflow:hidden}.hist i{display:block;height:100%;background:#f5a623}
+.acard.warnc{border-color:#e0b0aa;background:#fdf1ef}body.dark .acard.warnc{background:#35171a}
+.qp{display:flex;gap:8px;margin:2px 0 8px}.qp button{flex:1;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:12px;padding:8px 0;font-weight:700;font-size:13px}
+.composer .icon-btn.lg{color:var(--ink)}

@@ -2,7 +2,8 @@ import { esc, toast, money, fmtKm, fmtTime, fmtDate, ago, errMsg, hav, roleNames
 import { ic } from './icons.js';
 import { buildShell } from './shell.js';
 import { stepper, optChips, stars, rideRow, openRoute, confirmBox } from './rides.js';
-import { openChat, watchMessages, chatOpen } from './chat.js';
+import { openChat, watchMessages, chatOpen, renderInbox, watchInbox } from './chat.js';
+import { starRow } from './directory.js';
 import { startSharing, stopSharing, isSharing, onState, lastPoint, lastSent, lastReason } from './live.js';
 
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
@@ -11,16 +12,16 @@ const NEXT_D = { accepted: ['on_the_way', 'ابدأ التحرك نحو مكان
 const SUPPORT = '0933712979';
 
 export function mountProvider({ app, db, user, profile, logout }) {
-  const P = { ...profile }; const timers = []; const chans = [];
-  const S = { ride: null, contact: null, offers: [], mine: {}, unread: 0, pt: null, sig: '', locErr: '', today: null, seen: -1 }; let unwatch = null, home = null, busy = false, lastOfferIds = '';
+  const P = { ...profile }; const timers = []; const chans = []; const unsubs = [];
+  const S = { ride: null, contact: null, offers: [], mine: {}, unread: 0, pt: null, sig: '', locErr: '', today: null, seen: -1, of: 'all', rate: null }; let unwatch = null, home = null, busy = false, lastOfferIds = '';
   const rpc = async (n, a) => { const { data, error } = await db.rpc(n, a); if (error) throw error; return data; };
   const myRole = P.vehicle_kind === 'motor' ? 'motor' : P.role, motor = myRole === 'motor';
   const label = P.role === 'office' ? 'مكتب' : motor ? 'متور' : 'سائق';
 
   const shell = buildShell(app, {
     subtitle: `${roleNames[myRole] || label} · ${P.full_name || ''}`, start: 'requests',
-    tabs: [['requests', 'الطلبات', 'list'], ['stats', 'الإحصائيات', 'chart'], ['account', 'حسابي', 'user']],
-    onShow: (id, pane, first) => { if (id === 'requests') { if (first) initHome(pane); } else if (id === 'stats') renderStats(pane); else renderAccount(pane); },
+    tabs: [['requests', 'الطلبات', 'list'], ['msgs', 'الرسائل', 'chat'], ['stats', 'الإحصائيات', 'chart'], ['account', 'حسابي', 'user']],
+    onShow: (id, pane, first) => { if (id === 'requests') { if (first) initHome(pane); } else if (id === 'msgs') renderInbox(pane, { db, user, role: 'provider', onChange: n => shell?.dot('msgs', n > 0) }); else if (id === 'stats') renderStats(pane); else renderAccount(pane); },
   });
 
   /* ---------- الطلبات ---------- */
@@ -39,6 +40,8 @@ export function mountProvider({ app, db, user, profile, logout }) {
     chans.push(db.channel('p-rides-' + user.id).on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, () => refresh()).subscribe());
     timers.push(setInterval(() => { if (!document.hidden) refresh(); }, 6000));
     if (P.available && !isSharing()) startSharing(db).catch(() => { S.locErr = 'needs'; drawCard(); });
+    unsubs.push(watchInbox(db, user.id, () => { if (!chatOpen) { beep(); shell?.dot('msgs', true); } }));
+    db.rpc('chat_inbox').then(({ data }) => shell?.dot('msgs', (data || []).some(x => x.unread > 0)));
     refresh();
   }
 
@@ -64,9 +67,11 @@ export function mountProvider({ app, db, user, profile, logout }) {
   }
   async function loadToday() { try {
     const sod = new Date(); sod.setHours(0, 0, 0, 0);
-    const { data } = await db.from('rides').select('price').eq('accepted_by', user.id).eq('status', 'completed').gte('completed_at', sod.toISOString());
-    S.today = { n: data?.length || 0, sum: (data || []).reduce((s, r) => s + (r.price || 0), 0) };
-    const el = home?.querySelector('#pstats'); if (el) el.innerHTML = `<div class="stats today"><div><b>${S.today.n}</b><small>رحلات اليوم</small></div><div><b>${S.today.sum.toLocaleString('en-US')}</b><small>ل.س أرباح اليوم</small></div></div>`;
+    const { data: all } = await db.from('rides').select('price,rating,completed_at').eq('accepted_by', user.id).eq('status', 'completed').order('completed_at', { ascending: false }).limit(500);
+    const data = (all || []).filter(r => r.completed_at && new Date(r.completed_at) >= sod), rs = (all || []).filter(r => r.rating);
+    S.rate = { v: (4 * 3 + rs.reduce((s, r) => s + r.rating, 0)) / (3 + rs.length), n: rs.length };
+    S.today = { n: data.length, sum: data.reduce((s, r) => s + (r.price || 0), 0) };
+    const el = home?.querySelector('#pstats'); if (el) el.innerHTML = `<div class="stats today"><div><b>${S.today.n}</b><small>رحلات اليوم</small></div><div><b>${S.today.sum.toLocaleString('en-US')}</b><small>ل.س اليوم</small></div><div><b>${S.rate.v.toFixed(1)}</b>${starRow(S.rate.v)}<small>${S.rate.n ? S.rate.n + ' تقييم' : 'تقييم جديد'}</small></div></div>`;
   } catch { } }
 
   async function refresh() {
@@ -99,9 +104,13 @@ export function mountProvider({ app, db, user, profile, logout }) {
     if (r) html = activeHtml(r);
     else if (!P.available) html = `<div class="empty-st">${ic(motor ? 'motor' : 'car', 44)}<h3>أنت غير متاح</h3><p class="muted">شغّل التوفر في الأعلى لتستقبل طلبات الزبائن القريبة.</p></div>`;
     else if (!S.offers.length) html = `<div class="empty-st"><div class="pulse"><i></i><i></i>${ic(motor ? 'motor' : 'car', 26)}</div><h3>بانتظار الطلبات</h3><p class="muted">سيصلك إشعار فور وصول طلب جديد. أبقِ الشاشة مفتوحة.</p></div>`;
-    else html = `<h3 class="sec">طلبات الزبائن (${S.offers.length})</h3>` + S.offers.map(offerHtml).join('');
+    else {
+      const me = S.pt || lastPoint(), list = S.offers.filter(o => S.of === 'all' || (o.kind || 'taxi') === S.of).sort((a, b) => me ? hav(me[0], me[1], a.pickup_lat, a.pickup_lng) - hav(me[0], me[1], b.pickup_lat, b.pickup_lng) : 0);
+      const n = k => S.offers.filter(o => k === 'all' || (o.kind || 'taxi') === k).length;
+      html = `<div class="row"><h3 class="sec">طلبات الزبائن (${S.offers.length})</h3></div><div class="filt">${[['all', 'الكل'], ['taxi', 'تكسي'], ['delivery', 'توصيل']].map(([k, l]) => `<button class="fchip ${S.of === k ? 'on' : ''}" data-act="of" data-v="${k}">${l} <em>${n(k)}</em></button>`).join('')}</div><p class="small muted">الأقرب إليك أولاً</p>` + (list.map(offerHtml).join('') || '<p class="center muted">لا توجد طلبات من هذا النوع.</p>');
+    }
     // لا نُعيد الرسم إذا لم يتغير شيء حتى لا تضيع كتابة السعر
-    const sig = html.replace(/\d+ ?د(?=<)/g, '') + (r ? S.unread : '');
+    const sig = S.of + html.replace(/\d+ ?د(?=<)/g, '') + (r ? S.unread : '');
     if (!force && sig === S.sig && !r) return;
     if (!force && !r && el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && S.sig.length && offerIds() === lastOfferIds) return;
     S.sig = sig; lastOfferIds = offerIds(); el.innerHTML = html;
@@ -116,6 +125,7 @@ export function mountProvider({ app, db, user, profile, logout }) {
       <div class="chips"><span class="chip">${ic('route', 14)} ${fmtKm(d)}</span>${near != null ? `<span class="chip">${ic('target', 14)} يبعد عنك ${fmtKm(near)}</span>` : ''}${optChips(r)}${r.vehicle_type === 'comfort' ? '<span class="chip">مريحة</span>' : ''}${r.notes ? `<span class="chip">${ic('chat', 14)} ${esc(r.notes)}</span>` : ''}</div>
       <div class="o-form"><label>سعرك (ل.س)<input type="text" inputmode="numeric" data-price value="${mine?.price || P.base_fare || ''}" placeholder="مثال: 5000" dir="ltr"></label>
       <label>الوصول (دقيقة)<select data-eta>${[2, 3, 5, 8, 10, 15, 20].map(m => `<option ${((mine?.eta_minutes) || 5) === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label></div>
+      <div class="qp">${[-1000, -500, 500, 1000].map(d => `<button type="button" data-act="pp" data-d="${d}">${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}</div>
       <div class="row2"><button class="btn" data-act="quote" data-id="${r.id}">${mine ? 'تعديل العرض' : 'إرسال العرض'}</button>${mine ? `<button class="btn light" data-act="unquote" data-id="${r.id}">سحب</button>` : ''}</div></div>`;
   }
   function activeHtml(r) {
@@ -137,11 +147,13 @@ export function mountProvider({ app, db, user, profile, logout }) {
       if (a === 'avail') await toggleAvail(b);
       else if (a === 'loc') await toggleLoc(b);
       else if (a === 'locstart') { b.disabled = true; try { await startSharing(db); S.locErr = ''; toast('بدأت مشاركة الموقع', 'ok'); } catch (x) { S.locErr = /رفض/.test(x.message) ? 'denied' : 'needs'; throw x; } finally { drawCard(); } }
+      else if (a === 'of') { S.of = b.dataset.v; draw(true); }
+      else if (a === 'pp') { const i = b.closest('.offer').querySelector('[data-price]'), v = parseInt(latin(i.value).replace(/\D/g, ''), 10) || P.base_fare || 0; i.value = Math.max(500, v + +b.dataset.d); }
       else if (a === 'quote') await sendQuote(b);
       else if (a === 'unquote') { await rpc('withdraw_quote', { p_ride_id: +b.dataset.id }); toast('تم سحب العرض'); await refresh(); draw(true); }
       else if (a === 'next') await nextStatus(b);
       else if (a === 'pcancel') { if (await confirmBox('هل تريد إلغاء الرحلة؟ الإلغاء المتكرر يؤثر على حسابك.', 'نعم، ألغِ', 'رجوع')) { await rpc('provider_cancel_ride', { p_ride_id: S.ride.id }); S.ride = null; toast('تم إلغاء الرحلة'); await refresh(); draw(true); drawCard(); } }
-      else if (a === 'chat') { S.unread = 0; draw(true); await openChat({ db, user, rideId: S.ride.id, name: S.contact?.full_name || 'الزبون', phone: S.contact?.phone || '' }); }
+      else if (a === 'chat') { S.unread = 0; draw(true); await openChat({ db, user, rideId: S.ride.id, name: S.contact?.full_name || 'الزبون', phone: S.contact?.phone || '', role: 'provider', ride: S.ride, canSend: true }); }
     } catch (x) { toast(errMsg(x), 'err'); }
   }
   async function toggleAvail(b) {
@@ -196,10 +208,14 @@ export function mountProvider({ app, db, user, profile, logout }) {
     const today = done.filter(r => at(r) >= sod), week = done.filter(r => at(r) >= new Date(sod - 6 * 864e5));
     const rated = done.filter(r => r.rating), avg = rated.length ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0;
     const days = [...Array(7)].map((_, i) => { const d0 = new Date(sod - (6 - i) * 864e5), d1 = new Date(+d0 + 864e5); return { l: d0.toLocaleDateString('ar', { weekday: 'short' }), v: sum(done.filter(r => at(r) >= d0 && at(r) < d1)) }; }).reverse();
-    const mx = Math.max(1, ...days.map(d => d.v));
+    const mx = Math.max(1, ...days.map(d => d.v)), blend = (4 * 3 + rated.reduce((s, r) => s + r.rating, 0)) / (3 + rated.length);
     pane.innerHTML = `<div class="page"><h2 class="ph">الإحصائيات</h2>
       <div class="hero-card"><small>أرباح اليوم</small><b>${money(sum(today))}</b><span>${today.length} رحلة اليوم</span></div>
       <div class="stats"><div><b>${week.length}</b><small>رحلات الأسبوع</small></div><div><b>${done.length}</b><small>كل الرحلات</small></div><div><b>${avg ? avg.toFixed(1) : '—'}</b><small>${rated.length} تقييم</small></div></div>
+      <div class="card"><div class="row"><b>تقييمك</b><span class="rate">${starRow(blend)}<b>${blend.toFixed(1)}</b><small>${rated.length ? '(' + rated.length + ')' : 'جديد'}</small></span></div>
+        ${[5, 4, 3, 2, 1].map(k => { const c = rated.filter(r => r.rating === k).length; return `<div class="hist"><small>${k} ★</small><div><i style="width:${rated.length ? c / rated.length * 100 : 0}%"></i></div><small>${c}</small></div>`; }).join('')}
+        ${rated.filter(r => r.rating_comment).slice(0, 3).map(r => `<p class="note">«${esc(r.rating_comment)}»</p>`).join('')}</div>
+      <div class="stats"><div><b>${data.filter(r => r.status === 'cancelled' && r.cancelled_by === 'provider').length}</b><small>ألغيتها أنت</small></div><div><b>${data.filter(r => r.kind === 'delivery' && r.status === 'completed').length}</b><small>توصيلات مكتملة</small></div><div><b>${done.length ? Math.round(done.reduce((s, r) => s + (r.price || 0), 0) / done.length).toLocaleString('en-US') : '—'}</b><small>متوسط الطلب</small></div></div>
       <div class="card"><div class="row"><b>أرباح الأسبوع</b><b>${money(sum(week))}</b></div><div class="bars">${days.map(d => `<div><i style="height:${Math.max(4, d.v / mx * 100)}%"></i><small>${d.l}</small></div>`).join('')}</div></div>
       <div class="card"><div class="row"><span>إجمالي الأرباح</span><b>${money(sum(done))}</b></div><div class="row"><span>المسافة الكلية</span><b>${fmtKm(done.reduce((s, r) => s + (r.distance_m || 0), 0))}</b></div></div>
       <h3 class="sec">آخر الرحلات</h3>${data.slice(0, 20).map(r => rideRow(r)).join('') || '<p class="muted center">لا توجد رحلات بعد.</p>'}</div>`;
@@ -225,5 +241,5 @@ export function mountProvider({ app, db, user, profile, logout }) {
     };
   }
 
-  return () => { timers.forEach(clearInterval); chans.forEach(c => db.removeChannel(c)); unwatch?.(); onState(null); };
+  return () => { timers.forEach(clearInterval); unsubs.forEach(f => f()); chans.forEach(c => db.removeChannel(c)); unwatch?.(); onState(null); };
 }
