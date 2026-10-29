@@ -35,12 +35,34 @@ export async function prepareImage(file, rotate = 0) {
   const x = c.getContext('2d', { willReadFrequently: true });
   x.translate(c.width / 2, c.height / 2); x.rotate(rotate * Math.PI / 180); x.drawImage(bmp, -w / 2, -h / 2, w, h);
   bmp.close?.();
-  const img = x.getImageData(0, 0, c.width, c.height), d = img.data; let lo = 255, hi = 0;
-  for (let i = 0; i < d.length; i += 4) { const g = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) | 0; d[i] = g; if (g < lo) lo = g; if (g > hi) hi = g; }
+  const img = x.getImageData(0, 0, c.width, c.height), d = img.data; let lo = 255, hi = 0, sum = 0;
+  for (let i = 0; i < d.length; i += 4) { const g = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) | 0; d[i] = g; sum += g; if (g < lo) lo = g; if (g > hi) hi = g; }
+  c._mean = sum / (d.length / 4); c._range = hi - lo;
   const k = hi > lo ? 255 / (hi - lo) : 1;
   for (let i = 0; i < d.length; i += 4) { const g = Math.max(0, Math.min(255, (d[i] - lo) * k)) | 0; d[i] = d[i + 1] = d[i + 2] = g; }
   x.putImageData(img, 0, 0); return c;
 }
+
+// فحص جودة الصورة: إضاءة ووضوح (تباين الحواف)
+export function quality(c) {
+  const w = 480, h = Math.max(8, Math.round(c.height * w / c.width)), t = document.createElement('canvas'); t.width = w; t.height = h;
+  const x = t.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h); for (let i = 0; i < w * h; i++) g[i] = d[i * 4];
+  let s = 0, n = 0; for (let y = 1; y < h - 1; y++) for (let X = 1; X < w - 1; X++) { const i = y * w + X, v = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w]; s += v * v; n++; }
+  const sharp = Math.sqrt(s / n), mean = c._mean ?? 128, range = c._range ?? 255;
+  return { sharp, mean, range, issues: [mean < 60 && 'dark', mean > 215 && 'bright', range < 90 && 'flat', sharp < 14 && 'blur'].filter(Boolean) };
+}
+const Q_TXT = { dark: 'الصورة مظلمة: صوّر في إضاءة أفضل', bright: 'إضاءة قوية أو انعكاس: ابتعد عن الضوء المباشر', flat: 'التباين ضعيف: ضعها على خلفية مختلفة', blur: 'الصورة غير واضحة: ثبّت الهاتف وقرّب' };
+// تحويل ثنائي (أسود/أبيض) بعتبة Otsu لمحاولة قراءة ثانية
+function binarize(c) {
+  const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0);
+  const img = x.getImageData(0, 0, o.width, o.height), d = img.data, hist = new Array(256).fill(0); for (let i = 0; i < d.length; i += 4) hist[d[i]]++;
+  const total = d.length / 4; let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i]; let sB = 0, wB = 0, best = 0, th = 128;
+  for (let i = 0; i < 256; i++) { wB += hist[i]; if (!wB) continue; const wF = total - wB; if (!wF) break; sB += i * hist[i]; const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; th = i; } }
+  for (let i = 0; i < d.length; i += 4) { const v = d[i] > th ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = v; }
+  x.putImageData(img, 0, 0); return o;
+}
+const stepper = n => `<div class="kst">${['تصوير', 'قراءة', 'مراجعة'].map((t, i) => `<div class="${i < n ? 'on' : ''} ${i === n ? 'now' : ''}"><i>${i < n ? ic('check', 12) : i + 1}</i><span>${t}</span></div>`).join('')}</div>`;
 
 export function findNationalId(text) {
   const t = latin(text).replace(/(?<=\d)[\s\-.]+(?=\d)/g, '');
@@ -57,8 +79,8 @@ export function openKyc({ db, profile }) {
     const head = t => `<header class="top"><button class="icon-btn" data-x aria-label="إغلاق">${ic('close', 22)}</button><div class="ttl">${t}</div><span style="width:40px"></span></header>`;
 
     function stepIntro() {
-      ov.innerHTML = `${head('توثيق الهوية')}<main class="main kyc">
-        <div class="kyc-ico">${ic('id', 44)}</div>
+      ov.innerHTML = `${head('توثيق الهوية')}<main class="main kyc">${stepper(0)}
+        <div class="idframe"><div class="idc"><span></span><span></span><span></span><span></span>${ic('id', 54)}<small>ضع الهوية داخل الإطار</small></div></div>
         <h2>وثّق هويتك للمتابعة</h2>
         <p class="muted">مرة واحدة فقط. صوّر وجه الهوية السورية الذي عليه الرقم الوطني.</p>
         <ul class="tips"><li>${ic('check', 16)} ضعها على سطح مستوٍ وفي إضاءة جيدة</li><li>${ic('check', 16)} اجعل كل الحواف ظاهرة والنص واضحاً</li><li>${ic('check', 16)} تجنب انعكاس الضوء</li></ul>
@@ -70,13 +92,16 @@ export function openKyc({ db, profile }) {
     }
 
     async function stepPreview() {
-      ov.innerHTML = `${head('تأكيد الصورة')}<main class="main kyc"><div class="prev" id="prev"><div class="spin"></div></div>
+      ov.innerHTML = `${head('تأكيد الصورة')}<main class="main kyc">${stepper(1)}<div class="prev" id="prev"><div class="spin"></div></div><div id="qual" class="qual"></div>
         <div class="row2"><button class="btn light" data-rot>${ic('rotate', 18)} تدوير</button><button class="btn light" data-again>${ic('camera', 18)} صورة أخرى</button></div>
         <button class="btn full big" data-read>${ic('shield', 20)} اقرأ الهوية</button>
         <div id="prog" class="prog hidden"><div class="bar"><i id="bar"></i></div><p id="progtxt" class="small center">جارٍ التحضير…</p></div></main>`;
       try {
         canvas = await prepareImage(file, rot);
         const p = ov.querySelector('#prev'); p.innerHTML = ''; canvas.style.cssText = 'width:100%;height:auto;border-radius:14px'; p.appendChild(canvas);
+        const q = quality(canvas), qe = ov.querySelector('#qual'), rb = ov.querySelector('[data-read]');
+        qe.innerHTML = q.issues.length ? q.issues.map(i => `<div class="qi bad">${ic('warn', 16)} ${Q_TXT[i]}</div>`).join('') : `<div class="qi ok">${ic('check', 16)} الصورة واضحة ومناسبة للقراءة</div>`;
+        if (q.issues.includes('blur') || q.issues.includes('dark')) rb.innerHTML = `${ic('shield', 20)} اقرأ على أي حال`;
       } catch (e) { toast(errMsg(e), 'err'); return stepIntro(); }
       ov.querySelector('[data-rot]').onclick = () => { rot = (rot + 90) % 360; stepPreview(); };
       ov.querySelector('[data-again]').onclick = stepIntro;
@@ -89,7 +114,11 @@ export function openKyc({ db, profile }) {
             if (m.status === 'recognizing text') { bar.style.width = Math.round(20 + m.progress * 80) + '%'; tx.textContent = 'نقرأ النص… ' + Math.round(m.progress * 100) + '%'; }
             else { tx.textContent = 'نحمّل أداة القراءة (أول مرة فقط)…'; bar.style.width = '10%'; }
           } });
-          const { data } = await worker.recognize(canvas); ocr = data.text || '';
+          let { data } = await worker.recognize(canvas); ocr = data.text || '';
+          if (!findNationalId(ocr)) { // لم نجد الرقم: محاولة ثانية بصورة أبيض/أسود
+            const tx = ov.querySelector('#progtxt'); if (tx) tx.textContent = 'محاولة ثانية بتحسين الصورة…';
+            const r2 = await worker.recognize(binarize(canvas)); if (findNationalId(r2.data.text || '') || (r2.data.text || '').length > ocr.length) ocr = r2.data.text || ocr;
+          }
           await worker.terminate(); worker = null; stepReview();
         } catch (x) { toast(errMsg(x), 'err'); b.disabled = false; ov.querySelector('#prog').classList.add('hidden'); }
       };
@@ -97,8 +126,8 @@ export function openKyc({ db, profile }) {
 
     function stepReview(err = '') {
       const nid = findNationalId(ocr);
-      ov.innerHTML = `${head('راجع البيانات')}<main class="main kyc">
-        <p class="muted">راجع ما قرأناه وصحّحه عند الحاجة، ثم أكّد.</p>
+      ov.innerHTML = `${head('راجع البيانات')}<main class="main kyc">${stepper(2)}
+        <p class="muted">${nid ? 'قرأنا الرقم الوطني بنجاح. راجعه وأكّد.' : 'لم نستطع قراءة الرقم الوطني بوضوح. اكتبه بنفسك من الهوية.'}</p>
         <div id="kerr" class="auth-msg ${err ? 'show' : ''}">${esc(err)}</div>
         <label class="fld"><span>الرقم الوطني (11 رقماً)</span><input id="nid" inputmode="numeric" maxlength="14" dir="ltr" value="${esc(nid)}"></label>
         <label class="fld"><span>الاسم الكامل كما في الهوية</span><input id="nm" maxlength="100" value="${esc(profile?.full_name || '')}"></label>

@@ -7,12 +7,15 @@ import { setTheme, esc, toast, errMsg } from './utils.js';
 import { haltLocal } from './live.js';
 import { ensureSupabase, loadFont } from './loader.js';
 import { mountGuest } from './guest.js';
+import { initNav } from './nav.js';
 
 window.__booted = true; try { sessionStorage.removeItem('g-tried'); } catch { }
 const app = document.querySelector('#app');
 let db, cleanup = null, currentId = null, authMode = 'login', seq = 0;
 setTheme();
 loadFont();
+initNav();
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.__bip = e; });
 
 const splash = (t = '') => { app.innerHTML = `<div class="splash"><div class="auth-logo">وين؟</div>${t ? `<p>${esc(t)}</p>` : '<div class="spin"></div>'}</div>`; };
 const unmount = () => { try { cleanup?.(); } catch { } cleanup = null; };

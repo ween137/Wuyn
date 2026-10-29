@@ -4,7 +4,7 @@ const P = {
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
-  car: '<path d="M5 16l1.5-6A2 2 0 0 1 8.4 8.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>',
+  car: '<path d="M4 15v-3l1.6-4.2A2 2 0 0 1 7.5 6.5h9a2 2 0 0 1 1.9 1.3L20 12v3"/><path d="M3 15h18v3.2a.8.8 0 0 1-.8.8H19v-1.2H5V19H3.8a.8.8 0 0 1-.8-.8z"/><path d="M5.5 11.2h13"/><circle cx="7.3" cy="14.2" r=".7"/><circle cx="16.7" cy="14.2" r=".7"/>',
   pin: '<path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>',
   flag: '<path d="M5 22V3"/><path d="M5 4h13l-2 4 2 4H5"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
@@ -40,15 +40,21 @@ const P = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
   warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
   wifioff: '<path d="M3 3l18 18M5 12a10 10 0 0 1 4-2.3M2 8a15 15 0 0 1 6-3M12 19h.01M8.5 15.5a5 5 0 0 1 4-1.3"/>',
-  motor: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M9 17h5l3-7h-3"/><path d="M14 10l-2-4H9"/>',
+  motor: '<circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M8.5 17H13l2.6-6.2h2.4"/><path d="M15.6 10.8 14.6 8H12"/><path d="M6.2 12.2h3.2l2 4.8"/>',
   box: '<path d="M3 8l9-5 9 5v9l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v9"/>',
   filter: '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+  heart: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z"/>',
+  share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/>',
+  download: '<path d="M12 4v11M7.5 11 12 15.5 16.5 11"/><path d="M5 19h14"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8M12 17h.01"/>',
+  history: '<path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 5v4.5h4.5"/><path d="M12 8v4.5l3 1.8"/>',
+  bellring: '<path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4z"/><path d="M10 21h4"/><path d="M3 8a10 10 0 0 1 2-3M21 8a10 10 0 0 0-2-3"/>',
   taxi: '<path d="M5 16l1.5-6A2 2 0 0 1 8.4 8.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/><path d="M3 16h18v3H3z"/><path d="M10 5h4v3h-4z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>',
 };
 export function ic(name, size = 20, cls = '') {
   const d = P[name] || P.info;
-  return `<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  return `<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 }
 // علامات الخريطة (HTML داخل divIcon)
 export const pinSvg = (color = '#000') => `<svg width="30" height="38" viewBox="0 0 30 38"><path d="M15 37S3 24 3 14a12 12 0 0 1 24 0c0 10-12 23-12 23z" fill="${color}" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="4.5" fill="#fff"/></svg>`;
-export const carSvg = (color = '#000', glyph = 'car') => `<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="${color}" stroke="#fff" stroke-width="2"/><g transform="translate(5 5) scale(.95)" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[glyph] || P.car}</g></svg>`;
+export const carSvg = (color = '#000', glyph = 'car') => `<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="${color}" stroke="#fff" stroke-width="2"/><g transform="translate(5 5) scale(.95)" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${P[glyph] || P.car}</g></svg>`;

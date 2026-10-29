@@ -381,3 +381,54 @@ body.dark .alert-row{background:#3a2e0e;color:#f3d98a;border-color:#6b5517}
 .acard.warnc{border-color:#e0b0aa;background:#fdf1ef}body.dark .acard.warnc{background:#35171a}
 .qp{display:flex;gap:8px;margin:2px 0 8px}.qp button{flex:1;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:12px;padding:8px 0;font-weight:700;font-size:13px}
 .composer .icon-btn.lg{color:var(--ink)}
+/* توثيق الهوية */
+.kst{display:flex;justify-content:space-between;margin:0 0 16px;position:relative}
+.kst:before{content:"";position:absolute;top:12px;inset-inline:16%;height:2px;background:var(--line)}
+.kst>div{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;font-size:12px;color:var(--muted)}
+.kst i{width:26px;height:26px;border-radius:50%;background:var(--paper);border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:800;transition:.3s}
+.kst .on i{background:var(--ok);border-color:var(--ok);color:#fff}.kst .now i{border-color:var(--ink);color:var(--ink);box-shadow:0 0 0 4px rgba(0,0,0,.08)}.kst .now{color:var(--ink);font-weight:800}
+.idframe{margin:6px 0 14px}.idc{position:relative;aspect-ratio:1.6;max-width:320px;margin:auto;border-radius:16px;background:var(--soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted)}
+.idc span{position:absolute;width:26px;height:26px;border:3px solid var(--ink);border-radius:6px}
+.idc span:nth-child(1){top:-2px;right:-2px;border-left:0;border-bottom:0}.idc span:nth-child(2){top:-2px;left:-2px;border-right:0;border-bottom:0}.idc span:nth-child(3){bottom:-2px;right:-2px;border-left:0;border-top:0}.idc span:nth-child(4){bottom:-2px;left:-2px;border-right:0;border-top:0}
+.idc:after{content:"";position:absolute;inset-inline:10px;height:2px;background:linear-gradient(90deg,transparent,var(--ok),transparent);animation:scan 2.2s ease-in-out infinite}
+.qual{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.qi{display:flex;gap:8px;align-items:center;padding:9px 12px;border-radius:12px;font-size:13px;font-weight:700;animation:pop .3s}
+.qi.ok{background:#e3f4e8;color:#14612a}.qi.bad{background:#fff4d6;color:#7a5a00}
+body.dark .qi.ok{background:#14301c;color:#7ed596}body.dark .qi.bad{background:#3a2e0e;color:#f3d98a}
+@keyframes scan{0%,100%{top:14%}50%{top:84%}}
+
+/* ===== حركات وتفاعل ===== */
+@keyframes paneIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes ovIn{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes navBounce{0%{transform:translateY(0) scale(1)}40%{transform:translateY(-4px) scale(1.15)}100%{transform:translateY(0) scale(1)}}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes pulseLogo{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+.pane.on,.pane.active,[data-pane]:not([hidden]){animation:paneIn .28s ease both}
+.overlay{animation:ovIn .24s cubic-bezier(.2,.8,.2,1) both}
+.modal>*,.sheet.up{animation:sheetUp .26s cubic-bezier(.2,.8,.2,1) both}
+.dcard,.acard,.ride-row,.inbox-row,.offer,.quote,.tcard{animation:cardIn .32s cubic-bezier(.2,.8,.2,1) both}
+.dcard:nth-child(2),.acard:nth-child(2),.inbox-row:nth-child(2),.offer:nth-child(2){animation-delay:.04s}
+.dcard:nth-child(3),.acard:nth-child(3),.inbox-row:nth-child(3),.offer:nth-child(3){animation-delay:.08s}
+.dcard:nth-child(4),.acard:nth-child(4),.inbox-row:nth-child(4),.offer:nth-child(4){animation-delay:.12s}
+.dcard:nth-child(n+5),.acard:nth-child(n+5),.inbox-row:nth-child(n+5){animation-delay:.16s}
+.btn,.fchip,.svc,.dcard,.inbox-row,.menu-row,.quick button,.icon-btn,.tile{transition:transform .12s ease,background-color .2s,box-shadow .2s}
+.btn:active,.fchip:active,.svc:active,.dcard:active,.inbox-row:active,.menu-row:active,.quick button:active,.icon-btn:active,.tile:active{transform:scale(.96)}
+.bottom-nav .on .ic,.bottom-nav .on svg{animation:navBounce .4s ease}
+.toast{animation:toastIn .25s ease both}
+.ic{fill:currentColor;fill-opacity:.07}
+.bottom-nav .on .ic{fill-opacity:.22}
+.splash img,.splash .logo{animation:pulseLogo 1.4s ease-in-out infinite}
+.badge,.pill.live{animation:pop .3s ease both}
+.leaflet-marker-icon .pin,.mk{animation:pop .35s ease both}
+.heart{background:none;border:0;padding:6px;color:var(--muted,#9aa3b2);cursor:pointer;line-height:0;transition:transform .15s}
+.heart.on{color:#ef4444}.heart.on .ic{fill:currentColor;fill-opacity:.9;animation:pop .3s ease}
+.dcard{display:flex;gap:10px;align-items:flex-start;text-align:start;width:100%;cursor:pointer}
+.recent{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}
+.recent button{flex:none;display:flex;gap:6px;align-items:center;padding:8px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb);background:var(--card,#fff);color:inherit;font:inherit;font-size:.85rem}
+.menu-row small{color:var(--muted,#8a94a6);font-size:.8rem}.menu-row small.g{color:#16a34a}
+.menu-row .chev{opacity:.4}
+.faq{background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:12px 14px;margin:8px 0}
+.faq summary{font-weight:700;cursor:pointer}.faq p{margin:8px 0 0;line-height:1.7;color:var(--muted,#667085)}

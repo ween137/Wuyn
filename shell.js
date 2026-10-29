@@ -1,5 +1,6 @@
 import { esc } from './utils.js';
 import { ic } from './icons.js';
+import { setTabBack } from './nav.js';
 
 // هيكل مشترك: رأس + محتوى + شريط تنقل سفلي. كل تبويب له حاوية تبقى حية (الخريطة لا تُعاد بناؤها).
 export function buildShell(app, { subtitle = '', tabs, start, onShow, right = '' }) {
@@ -16,6 +17,7 @@ export function buildShell(app, { subtitle = '', tabs, start, onShow, right = ''
     const prev = cur; cur = id; onShow(id, panes[id], first, prev);
   }
   btns.forEach(b => b.onclick = () => show(b.dataset.tab));
+  setTabBack(() => { if (cur && cur !== (start || tabs[0][0])) { show(start || tabs[0][0]); return true; } return false; });
   show(start || tabs[0][0]);
   return { panes, show, current: () => cur, dot(id, on) { btns.find(b => b.dataset.tab === id)?.querySelector('.dot').classList.toggle('hidden', !on); } };
 }

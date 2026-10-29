@@ -1,4 +1,4 @@
-import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames, stName, beep } from './utils.js';
+import { esc, toast, money, fmtKm, fmtTime, errMsg, hav, roleNames, toggleTheme, statusNames, vehicleNames, stName, beep, notify } from './utils.js';
 import { ic, pinSvg } from './icons.js';
 import { createMap, YABROUD } from './map.js';
 import { buildShell } from './shell.js';
@@ -7,10 +7,14 @@ import { openChat, watchMessages, chatOpen, renderInbox, watchInbox } from './ch
 import { openKyc } from './kyc.js';
 import { ensureLeaflet } from './loader.js';
 import { taxiCard, openDirectory, dirPage } from './directory.js';
+import { push as navPush, release as navRelease } from './nav.js';
+import { extrasHtml, handleExtra } from './help.js';
 
 const ACTIVE = ['searching', 'accepted', 'on_the_way', 'arrived', 'started', 'no_driver'];
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
 const SUPPORT = '0933712979';
+const recents = () => { try { return JSON.parse(localStorage.getItem('ween-recent') || '[]').slice(0, 5); } catch { return []; } };
+const addRecent = r => { try { const l = recents().filter(x => x.t !== r.t); l.unshift(r); localStorage.setItem('ween-recent', JSON.stringify(l.slice(0, 5))); } catch { } };
 const etaMin = m => Math.max(1, Math.round(m / 420)); // ~25 كم/س داخل المدينة
 
 export function mountCustomer({ app, db, user, profile, logout }) {
@@ -49,7 +53,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     db.from('customer_identity').select('user_id').eq('user_id', user.id).maybeSingle().then(({ data }) => { S.verified = !!data; draw(true); });
     chans.push(db.channel('c-rides-' + user.id).on('postgres_changes', { event: '*', schema: 'public', table: 'rides', filter: 'customer_id=eq.' + user.id }, () => tick()).subscribe());
     timers.push(setInterval(() => { if (!document.hidden) tick(); }, 4000));
-    unsubs.push(watchInbox(db, user.id, () => { if (!chatOpen) { beep(); shell?.dot('msgs', true); } }));
+    unsubs.push(watchInbox(db, user.id, m => { if (!chatOpen) { beep(); notify('رسالة جديدة', (m?.body || '').startsWith('📍') ? '📍 موقع' : (m?.body || ''), 'msg'); shell?.dot('msgs', true); } }));
     db.rpc('chat_inbox').then(({ data }) => shell?.dot('msgs', (data || []).some(x => x.unread > 0)));
     refresh();
   }
@@ -98,10 +102,11 @@ export function mountCustomer({ app, db, user, profile, logout }) {
         if (data?.status === 'cancelled' && data.cancelled_by === 'provider') toast('ألغى السائق الرحلة. يمكنك طلب رحلة جديدة.', 'err');
       }
       const changed = !prev || !r || prev.id !== r.id || prev.status !== r.status;
+      if (prev && r && prev.id === r.id && prev.status !== r.status) { const m = { accepted: 'تم تأكيد طلبك، السائق في الطريق', arrived: 'وصل السائق إلى موقعك', completed: 'انتهت الرحلة، شكراً لك' }[r.status]; if (m) notify('وين؟', m, 'ride-' + r.id); }
       S.ride = r;
       if (r && changed) { S.quotes = []; S.live = null; S.contact = null; S.unread = 0; setupRide(); }
       if (!r && prev) { unwatch?.(); unwatch = null; map?.remove('car'); map?.remove('lineA'); map?.line('route', null); map?.line('guide', null); }
-      if (r?.status === 'searching') await loadQuotes();
+      if (r?.status === 'searching') { const n0 = S.quotes.length; await loadQuotes(); if (S.quotes.length > n0) { beep(); notify('وين؟', 'وصلك عرض سعر جديد', 'quote-' + r.id); } }
       if (r && TRACK.includes(r.status)) { await Promise.all([loadLive(), S.contact ? 0 : loadContact(r)]); }
       if (r?.status === 'completed' && !S.rating) { S.rating = true; draw(true); await rateSheet({ db, ride: r }); dismissed.add(r.id); S.rating = false; S.ride = null; S.mode = 'idle'; map?.line('route', null); clearRideMarks(); draw(true); loadTaxis(true); return; }
       if (r?.status === 'searching' && !S.quotes.length && Date.now() - new Date(r.created_at) > 175000) { try { await rpc('mark_no_driver', { p_ride_id: r.id }); S.ride = { ...r, status: 'no_driver' }; } catch {} }
@@ -164,6 +169,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     const live = k => S.taxis.filter(t => k === 'all' || t.role === k).length, n = live('all');
     const F = [['all', 'الكل'], ['driver', 'سيارات'], ['motor', 'متورات'], ['office', 'مكاتب']];
     return `<div class="handle"></div><div class="svc"><button class="svc-b" data-act="start" data-kind="taxi">${ic('car', 30)}<b>اطلب سيارة</b><small>تنقّل داخل يبرود</small></button><button class="svc-b alt" data-act="start" data-kind="delivery">${ic('box', 30)}<b>توصيل طلب</b><small>متور أو سيارة</small></button></div>
+      ${recents().length ? `<div class="recent">${recents().map((x, i) => `<button data-act="recent" data-i="${i}">${ic('history', 14)} ${esc(x.t)}</button>`).join('')}</div>` : ''}
       <div class="filt">${F.map(([k, l]) => `<button class="fchip ${S.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l} <em>${live(k)}</em></button>`).join('')}</div>
       <p class="avail">${n ? `<i class="live-dot"></i> ${n} ${n === 1 ? 'متاح الآن' : 'متاحون الآن'} على الخريطة` : 'لا أحد ظاهر على الخريطة الآن. جرّب بعد قليل أو افتح القائمة.'}</p>
       <button class="dirbtn" data-act="dir">${ic('users', 18)} كل المكاتب والسائقين والمتورات (${S.dir.length})</button>`;
@@ -246,8 +252,8 @@ export function mountCustomer({ app, db, user, profile, logout }) {
       else if (a === 'dir') openDirectory(S.dir, t => { S.sel = t; if (t.state === 'live' && t.lat != null) map?.flyTo([t.lat, t.lng], 16); draw(true); }, S.filter)
       else if (a === 'tclose') { S.sel = null; draw(true); }
       else if (a === 'tlocate') { const t = S.dir.find(x => x.k === b.dataset.k); if (t?.lat != null) map?.flyTo([t.lat, t.lng], 17); }
-      else if (a === 'start') { S.kind = b.dataset.kind || 'taxi'; S.sel = null; S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
-      else if (a === 'cancelpick' || a === 'cancelcompose') { S.mode = 'idle'; clearRideMarks(); draw(true); loadTaxis(true); }
+      else if (a === 'start' || a === 'recent') { S.kind = a === 'recent' ? 'taxi' : (b.dataset.kind || 'taxi'); S.pre = a === 'recent' ? recents()[+b.dataset.i] || null : null; S.dtxt = S.pre ? S.pre.t : ''; S.sel = null; navRelease(S.nav); S.nav = navPush(() => { S.nav = null; S.mode = 'idle'; clearRideMarks(); draw(true); loadTaxis(true); }); S.mode = 'pick'; S.step = 'pickup'; S.pickup = null; S.dropoff = null; map?.syncCars([]); if (S.me) map?.map.setView(S.me, 16); draw(true); }
+      else if (a === 'cancelpick' || a === 'cancelcompose') { navRelease(S.nav); S.nav = null; S.mode = 'idle'; clearRideMarks(); draw(true); loadTaxis(true); }
       else if (a === 'backpick') { S.step = 'pickup'; draw(true); }
       else if (a === 'confirmpick') confirmPick();
       else if (a === 'repick') { S.mode = 'pick'; S.step = b.dataset.step; clearRideMarks(); map?.map.setView(S.step === 'pickup' ? S.pickup : S.dropoff, 17); draw(true); }
@@ -262,7 +268,9 @@ export function mountCustomer({ app, db, user, profile, logout }) {
   function confirmPick() {
     const c = map.center();
     if (S.step === 'pickup') {
-      S.pickup = c; S.ptxt = S.me && hav(...c, ...S.me) < 150 ? 'موقعي الحالي' : 'نقطة على الخريطة'; map.put('a', c, 'pin', '#1a7f37'); S.step = 'dropoff'; draw(true);
+      S.pickup = c; S.ptxt = S.me && hav(...c, ...S.me) < 150 ? 'موقعي الحالي' : 'نقطة على الخريطة'; map.put('a', c, 'pin', '#1a7f37');
+      if (S.pre && hav(...c, S.pre.la, S.pre.ln) >= 80) { const d = [S.pre.la, S.pre.ln]; S.dropoff = d; S.dtxt = S.pre.t; map.put('b', d, 'pin', '#c0392b'); map.line('route', [c, d], { dashArray: '6 8', color: '#555' }); map.fit([c, d], [50, 60], [50, (sheet?.offsetHeight || 420) + 24]); S.mode = 'compose'; return draw(true); }
+      S.step = 'dropoff'; draw(true);
     } else {
       if (hav(...S.pickup, ...c) < 80) return toast('الوجهة قريبة جداً من نقطة الانطلاق.', 'err');
       S.dropoff = c; if (!S.dtxt) S.dtxt = ''; map.put('a', S.pickup, 'pin', '#1a7f37'); map.put('b', c, 'pin', '#c0392b'); map.line('route', [S.pickup, c], { dashArray: '6 8', color: '#555' }); map.fit([S.pickup, c], [50, 60], [50, (sheet?.offsetHeight || 420) + 24]);
@@ -284,7 +292,7 @@ export function mountCustomer({ app, db, user, profile, logout }) {
         const ok = await openKyc({ db, profile }); if (!ok) throw new Error('يلزم توثيق الهوية لإرسال الطلب.');
         S.verified = true; await rpc(fn, args);
       }
-      toast('تم إرسال طلبك', 'ok'); S.mode = 'idle'; S.opts = {}; S.notes = ''; S.pax = 1; S.item = ''; clearRideMarks(); await refresh();
+      if (!del) addRecent({ t: S.dtxt.trim(), la: S.dropoff[0], ln: S.dropoff[1] }); S.pre = null; toast('تم إرسال طلبك', 'ok'); navRelease(S.nav); S.nav = null; S.mode = 'idle'; S.opts = {}; S.notes = ''; S.pax = 1; S.item = ''; clearRideMarks(); await refresh();
     } catch (e) { toast(errMsg(e), 'err'); btn.disabled = false; btn.textContent = label; }
   }
   async function choose(btn) {
@@ -317,9 +325,10 @@ export function mountCustomer({ app, db, user, profile, logout }) {
     pane.innerHTML = `<div class="page acc"><div class="avatar">${esc((profile.full_name || '؟').trim()[0])}</div><h2 class="ctr">${esc(profile.full_name)}</h2><p class="ph-no">${esc(profile.phone || '')}</p>
       <div class="idcard ${S.verified ? 'ok' : ''}">${ic(S.verified ? 'shield' : 'id', 26)}<div><b>${S.verified ? 'هويتك موثّقة' : 'الهوية غير موثّقة'}</b><small>${S.verified ? 'يمكنك طلب الرحلات' : 'مطلوب مرة واحدة قبل أول رحلة'}</small></div>${S.verified ? '' : '<button class="btn sm" data-a="kyc">وثّق الآن</button>'}</div>
       <div class="stats"><div><b>${done.length}</b><small>رحلة مكتملة</small></div><div><b>${(km / 1000).toFixed(1)}</b><small>كم</small></div><div><b>${spent.toLocaleString('en-US')}</b><small>ل.س أُنفقت</small></div></div>
-      <div class="menu">${row('moon', 'الوضع الليلي', 'theme')}<a class="menu-row" href="tel:${SUPPORT}">${ic('phone', 22)}<span class="grow">الدعم والمساعدة</span>${ic('back', 18, 'chev')}</a></div>
+      ${extrasHtml()}<div class="menu">${row('moon', 'الوضع الليلي', 'theme')}<a class="menu-row" href="tel:${SUPPORT}">${ic('phone', 22)}<span class="grow">الدعم والمساعدة</span>${ic('back', 18, 'chev')}</a></div>
       <button class="btn-soft" data-a="logout">${ic('logout', 20)} تسجيل الخروج</button></div>`;
     pane.onclick = async e => {
+      const x = e.target.closest('[data-x]'); if (x) return handleExtra(x.dataset.x, 'customer', () => renderAccount(pane));
       const b = e.target.closest('[data-a]'); if (!b) return;
       if (b.dataset.a === 'logout') logout(); else if (b.dataset.a === 'theme') toggleTheme();
       else if (b.dataset.a === 'kyc') { if (await openKyc({ db, profile })) renderAccount(pane); }

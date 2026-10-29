@@ -1,9 +1,10 @@
-import { esc, toast, money, fmtKm, fmtTime, fmtDate, ago, errMsg, hav, roleNames, toggleTheme, latin, beep } from './utils.js';
+import { esc, toast, money, fmtKm, fmtTime, fmtDate, ago, errMsg, hav, roleNames, toggleTheme, latin, beep, notify } from './utils.js';
 import { ic } from './icons.js';
 import { buildShell } from './shell.js';
 import { stepper, optChips, stars, rideRow, openRoute, confirmBox } from './rides.js';
 import { openChat, watchMessages, chatOpen, renderInbox, watchInbox } from './chat.js';
 import { starRow } from './directory.js';
+import { extrasHtml, handleExtra } from './help.js';
 import { startSharing, stopSharing, isSharing, onState, lastPoint, lastSent, lastReason } from './live.js';
 
 const TRACK = ['accepted', 'on_the_way', 'arrived', 'started'];
@@ -36,11 +37,11 @@ export function mountProvider({ app, db, user, profile, logout }) {
     // أول لمسة: نبدأ مشاركة الموقع تلقائياً إن كنت متاحاً (المتصفح يشترط لمسة لطلب الإذن)
     const first = () => { if (P.available && !isSharing()) startSharing(db).then(() => { S.locErr = ''; drawCard(); }).catch(e => { S.locErr = /رفض/.test(e.message) ? 'denied' : 'needs'; drawCard(); }); };
     pane.addEventListener('pointerdown', first, { once: true });
-    chans.push(db.channel('p-offers-' + user.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_offers', filter: 'recipient_id=eq.' + user.id }, () => { beep(); toast('وصلك طلب جديد', 'ok'); refresh(); }).subscribe());
+    chans.push(db.channel('p-offers-' + user.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ride_offers', filter: 'recipient_id=eq.' + user.id }, () => { beep(); notify('وين؟', 'وصلك طلب جديد', 'offer'); toast('وصلك طلب جديد', 'ok'); refresh(); }).subscribe());
     chans.push(db.channel('p-rides-' + user.id).on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, () => refresh()).subscribe());
     timers.push(setInterval(() => { if (!document.hidden) refresh(); }, 6000));
     if (P.available && !isSharing()) startSharing(db).catch(() => { S.locErr = 'needs'; drawCard(); });
-    unsubs.push(watchInbox(db, user.id, () => { if (!chatOpen) { beep(); shell?.dot('msgs', true); } }));
+    unsubs.push(watchInbox(db, user.id, m => { if (!chatOpen) { beep(); notify('رسالة جديدة', (m?.body || '').startsWith('📍') ? '📍 موقع' : (m?.body || ''), 'msg'); shell?.dot('msgs', true); } }));
     db.rpc('chat_inbox').then(({ data }) => shell?.dot('msgs', (data || []).some(x => x.unread > 0)));
     refresh();
   }
@@ -228,9 +229,10 @@ export function mountProvider({ app, db, user, profile, logout }) {
     pane.innerHTML = `<div class="page acc"><div class="avatar">${esc((P.full_name || '؟').trim()[0])}</div><h2 class="ctr">${esc(P.full_name)}</h2><p class="ph-no">${esc(P.phone || '')}</p>
       <div class="card"><div class="row"><span>الصفة</span><b>${esc(roleNames[myRole] || '')}</b></div>${car ? `<div class="row"><span>${motor ? 'الدراجة' : 'السيارة'}</span><b>${esc(car)}</b></div>` : ''}</div>
       <div class="card"><label class="fld"><span>السعر الافتراضي لعروضك (ل.س)</span><input id="bf" inputmode="numeric" dir="ltr" value="${P.base_fare || ''}" placeholder="مثال: 5000"></label><button class="btn full" data-a="bf">حفظ السعر الافتراضي</button><p class="small">يظهر تلقائياً في خانة السعر ويمكنك تغييره لكل طلب.</p></div>
-      <div class="menu"><button class="menu-row" data-a="theme">${ic('moon', 22)}<span class="grow">الوضع الليلي</span>${ic('back', 18, 'chev')}</button><a class="menu-row" href="tel:${SUPPORT}">${ic('phone', 22)}<span class="grow">الدعم والمساعدة</span>${ic('back', 18, 'chev')}</a></div>
+      ${extrasHtml()}<div class="menu"><button class="menu-row" data-a="theme">${ic('moon', 22)}<span class="grow">الوضع الليلي</span>${ic('back', 18, 'chev')}</button><a class="menu-row" href="tel:${SUPPORT}">${ic('phone', 22)}<span class="grow">الدعم والمساعدة</span>${ic('back', 18, 'chev')}</a></div>
       <button class="btn-soft" data-a="logout">${ic('logout', 20)} تسجيل الخروج</button></div>`;
     pane.onclick = async e => {
+      const x = e.target.closest('[data-x]'); if (x) return handleExtra(x.dataset.x, 'provider', () => renderAccount(pane));
       const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a;
       if (a === 'logout') { if (S.ride) return toast('أنهِ رحلتك الجارية أولاً.', 'err'); logout(); }
       else if (a === 'theme') toggleTheme();

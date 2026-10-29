@@ -56,3 +56,15 @@ let _ac; document.addEventListener('pointerdown', () => { try { _ac ||= new (win
 export function beep() {
   try { if (!_ac) return; const t = _ac.currentTime; [0, .18].forEach((d, i) => { const o = _ac.createOscillator(), g = _ac.createGain(); o.frequency.value = i ? 988 : 784; g.gain.setValueAtTime(.0001, t + d); g.gain.exponentialRampToValueAtTime(.25, t + d + .02); g.gain.exponentialRampToValueAtTime(.0001, t + d + .16); o.connect(g).connect(_ac.destination); o.start(t + d); o.stop(t + d + .17); }); navigator.vibrate?.([200, 100, 200]); } catch {}
 }
+
+// إشعارات المتصفح (تعمل عندما تكون الصفحة مفتوحة في الخلفية)
+export const canNotify = () => 'Notification' in window;
+export const notifyState = () => !canNotify() ? 'unsupported' : Notification.permission;
+export async function askNotify() { if (!canNotify()) return 'unsupported'; try { return await Notification.requestPermission(); } catch { return 'denied'; } }
+export async function notify(title, body = '', tag = 'wein') {
+  try {
+    if (!canNotify() || Notification.permission !== 'granted' || !document.hidden) return;
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg?.showNotification) reg.showNotification(title, { body, tag, icon: 'assets/logo.svg', badge: 'assets/logo.svg', vibrate: [200, 100, 200], dir: 'rtl', lang: 'ar' }); else new Notification(title, { body, tag });
+  } catch { }
+}
