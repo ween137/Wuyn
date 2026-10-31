@@ -1,0 +1,63 @@
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+/* ===== تحقق تلغرام وGoogle ===== */
+.tgbox{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;display:grid;place-items:center;background:#e8f4fd;color:#229ed9;animation:pop .35s ease both}
+.otp{width:100%;text-align:center;letter-spacing:.5em;font-size:1.6rem;font-weight:800;padding:14px 10px;border-radius:14px;border:1.5px solid var(--line,#e5e7eb);background:var(--card,#fff);color:inherit;margin:6px 0 10px}
+.otp:focus{outline:none;border-color:#229ed9;box-shadow:0 0 0 3px rgba(34,158,217,.18)}
+.tgnote{display:flex;gap:6px;align-items:center;justify-content:center;color:var(--muted,#667085)}
+.gbtn{display:flex;gap:10px;align-items:center;justify-content:center}
+#tgopen{display:flex;gap:8px;align-items:center;justify-content:center;text-decoration:none;margin-top:8px}
+.auth-card .link:disabled{opacity:.5}
+
+
+/* ===== شاشة الدخول بشكل تطبيق ===== */
+.auth-wrap{background:radial-gradient(120% 90% at 50% 0%,#1d1d22 0%,#000 70%)}
+.auth-hero{position:relative;overflow:hidden;padding:calc(30px + env(safe-area-inset-top)) 20px 64px}
+.bgrid{position:absolute;inset:0;opacity:.18;background-image:linear-gradient(#fff3 1px,transparent 1px),linear-gradient(90deg,#fff3 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(70% 70% at 50% 40%,#000,transparent);-webkit-mask-image:radial-gradient(70% 70% at 50% 40%,#000,transparent)}
+.appmark{position:relative;width:76px;height:76px;margin:0 auto 12px;border-radius:24px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,#ff8a1f,#e8590c);box-shadow:0 12px 30px #e8590c66,inset 0 1px 0 #fff5;animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both}
+.appmark .ic{fill:#fff;fill-opacity:.18}
+.auth-hero .auth-logo{position:relative;font-size:50px;animation:cardIn .5s .1s both}
+.auth-hero p{position:relative;animation:cardIn .5s .18s both}
+.road{position:relative;height:18px;margin:18px auto 0;max-width:260px;border-bottom:2px dashed #ffffff40}
+.carrun{position:absolute;bottom:-3px;inset-inline-start:0;color:#ff9a3d;animation:carrun 3.4s ease-in-out infinite alternate}
+.carrun .ic{fill:#ff9a3d;fill-opacity:.35}
+@keyframes carrun{from{transform:translateX(0)}to{transform:translateX(-230px)}}
+html[dir=ltr] .carrun,.ltr .carrun{animation-name:carrun2}
+.auth-card{animation:sheetUp .45s cubic-bezier(.2,.8,.2,1) both;box-shadow:0 -10px 40px #0006}
+.segs{position:relative;padding:5px;border-radius:18px}
+.seg{display:flex;gap:6px;align-items:center;justify-content:center;padding:12px 4px;border-radius:14px;font-size:14px;transition:all .25s}
+.seg.on{box-shadow:0 4px 14px #0003}
+.backrow{display:inline-flex;gap:4px;align-items:center;border:0;background:none;color:var(--muted);font-weight:700;padding:6px 0}
+.fld>span{font-size:13px;font-weight:700;margin-bottom:7px}
+.inp{display:flex;align-items:center;gap:10px;height:54px;padding:0 14px;border:1.5px solid var(--line);border-radius:16px;background:var(--soft,#f6f6f8);transition:border-color .2s,box-shadow .2s,background .2s}
+.inp:focus-within{border-color:var(--ink);background:var(--paper);box-shadow:0 0 0 4px #0000000f}
+.inp .lead{color:var(--muted);flex:none;transition:color .2s}.inp:focus-within .lead{color:var(--ink)}
+.fld .inp input{flex:1;min-width:0;border:0;background:none;padding:0;height:100%;outline:none;font-size:16px;border-radius:0}
+.inp .eye{position:static;transform:none;flex:none}
+.auth-card .btn.big{display:flex;gap:8px;align-items:center;justify-content:center;height:56px;border-radius:18px;font-size:17px;margin-top:8px}
+.auth-card .btn.big .ic{fill:none}
+.procard{display:flex;gap:12px;align-items:center;width:100%;margin-top:18px;padding:14px;border:1.5px dashed var(--line);border-radius:18px;background:none;color:inherit;text-align:start}
+.procard .pi{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:#fff1e6;color:#e8590c;flex:none}
+.procard small{display:block;color:var(--muted);font-weight:500}.procard .chev{opacity:.4}
+.procard:active{transform:scale(.98)}
+.guestlink{display:flex;gap:6px;align-items:center;justify-content:center;width:100%;margin-top:10px;padding:12px;border:0;background:none;color:var(--muted);font-weight:700}
+.ctr{text-align:center}
+.vcard .tgring{width:92px;height:92px;margin:6px auto 4px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(#229ed922,#229ed900 70%);position:relative}
+.vcard .tgring:before{content:"";position:absolute;inset:6px;border-radius:50%;border:2px solid #229ed955;animation:ring 1.8s ease-out infinite}
+@keyframes ring{from{transform:scale(.8);opacity:1}to{transform:scale(1.25);opacity:0}}
+.vcard[data-m=sent] .tgring:before,.vcard[data-m=error] .tgring:before{animation:none;opacity:0}
+.vsteps ol{margin:8px 0 12px;padding:12px 28px 12px 14px;background:var(--soft,#f6f6f8);border-radius:16px;line-height:2;font-size:14px}
+.tgbtn{background:#229ed9!important;color:#fff!important;border:0;text-decoration:none}
+.tgbtn .ic{fill:#fff;fill-opacity:.25}
+.tgbtn.pulse{animation:pulseBtn 1.2s ease-in-out infinite}
+@keyframes pulseBtn{0%,100%{box-shadow:0 0 0 0 #229ed988}50%{box-shadow:0 0 0 10px #229ed900}}
+.vcard[data-m=sent] .tgbtn{background:var(--soft,#f1f1f4)!important;color:var(--ink)!important;height:48px;font-size:15px}
+.vcard[data-m=wait] #vf,.vcard[data-m=error] #vf{display:none!important}
+.vcard[data-m=error] .tgbtn,.vcard[data-m=error] #resend{display:none!important}
+.vcard[data-m=sent] #vsteps{display:none}
+.vact{display:grid;gap:8px;margin-top:10px}
+.auth-wrap:has(.vcard) .auth-hero{padding-top:calc(18px + env(safe-area-inset-top));padding-bottom:36px}
+.auth-wrap:has(.vcard) .appmark{width:52px;height:52px;border-radius:17px;margin-bottom:6px}
+.auth-wrap:has(.vcard) .appmark .ic{width:28px;height:28px}
+.auth-wrap:has(.vcard) .auth-logo{font-size:34px}.auth-wrap:has(.vcard) .road{display:none}
