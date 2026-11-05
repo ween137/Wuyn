@@ -1,0 +1,17 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فحص وين؟</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#f3f3f5;color:#111}h1{font-size:20px}.r{background:#fff;border-radius:12px;padding:12px;margin:8px 0;display:flex;justify-content:space-between;gap:8px;align-items:center}.ok{color:#1a7f37;font-weight:700}.no{color:#c0392b;font-weight:700}small{color:#666;display:block}code{direction:ltr;display:block;background:#eee;border-radius:8px;padding:8px;margin-top:6px;font-size:12px;white-space:pre-wrap;word-break:break-all}</style></head><body>
+<h1>فحص ملفات وين؟</h1><div id="o">جارٍ الفحص…</div>
+<script>
+const files=['app.js','app2.js','cargo.js','cargo.css','buses.js','buses.css','offices.js','signin.js','utils.js','sw.js'];
+const U='?t='+Date.now();
+(async()=>{const o=document.getElementById('o');let h='';
+ for(const f of files){let st='❌ غير موجود',c='no',extra='';try{const r=await fetch('/'+f+U,{cache:'no-store'});const t=await r.text();
+  if(r.ok&&!/<html/i.test(t.slice(0,300))){st='✅ موجود ('+Math.round(t.length/1024)+' ك.ب)';c='ok';
+   if(f==='app.js'||f==='app2.js')extra='<code>'+t.split('\n').slice(0,4).join('\n').replace(/</g,'&lt;')+'</code>';}}catch(e){st='❌ خطأ اتصال'}
+  h+='<div class="r"><span dir="ltr">'+f+'</span><span class="'+c+'">'+st+'</span></div>'+extra;}
+ try{const t=await (await fetch('/index.html'+U,{cache:'no-store'})).text();const m=t.match(/<script type="module" src="([^"]+)"/);
+  h+='<div class="r"><span>index.html يشغّل</span><span dir="ltr" class="'+(m&&/app2/.test(m[1])?'ok':'no')+'">'+(m?m[1]:'؟')+'</span></div>';}catch(e){}
+ try{const rg=await navigator.serviceWorker.getRegistrations();h+='<div class="r"><span>نسخة محفوظة قديمة</span><span>'+rg.length+'</span></div>';}catch(e){}
+ h+='<button style="width:100%;padding:14px;border:0;border-radius:12px;background:#000;color:#fff;font-size:16px;margin-top:10px" onclick="(async()=>{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();for(const k of await caches.keys())await caches.delete(k);location.href=\'/\'})()">مسح النسخة المحفوظة وفتح التطبيق</button>';
+ o.innerHTML=h;})();
+</script></body></html>
