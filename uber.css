@@ -1,0 +1,114 @@
+/* uber.css — طبقة تحسين بصري بأسلوب Uber فوق app-new.css.
+   لا تغيّر ترتيب العناصر ولا أماكنها؛ ألوان وزوايا وظلال وأحجام خط وحركات فقط. */
+:root{--ink:#000;--soft:#f2f2f4;--line:#e6e6ea;--accent:#06c167;--r:20px;--shadow:0 6px 24px rgba(0,0,0,.10);--shadow-s:0 1px 3px rgba(0,0,0,.08)}
+body.dark{--ink:#fff;--paper:#141416;--bg:#000;--soft:#1f1f23;--line:#2b2b31;--shadow:0 6px 24px rgba(0,0,0,.5)}
+html,body{font-family:Tajawal,"Segoe UI",Tahoma,Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+:focus-visible{outline:3px solid #276ef1;outline-offset:2px;border-radius:10px}
+
+/* الرأس والتنقل */
+.top{box-shadow:0 1px 0 rgba(255,255,255,.06)}
+.logo{font-size:26px;letter-spacing:-.5px}
+.bottom-nav{border-top:0;box-shadow:0 -1px 0 var(--line),0 -8px 24px rgba(0,0,0,.05)}
+.bottom-nav button{font-size:11.5px;gap:2px;padding-top:8px}
+.bottom-nav .ni{width:52px;height:32px;border-radius:16px;display:grid;place-items:center;transition:background-color .2s,color .2s,transform .15s}
+.bottom-nav button.on .ni{background:var(--ink);color:var(--paper)}
+.bottom-nav button:active .ni{transform:scale(.92)}
+
+/* الأزرار */
+.btn{border-radius:14px;font-weight:800;letter-spacing:.1px;box-shadow:none;min-height:46px}
+.btn.big{min-height:56px;border-radius:16px;font-size:17px}
+.btn.sm{min-height:36px;border-radius:999px;padding:7px 16px}
+.btn.light{background:var(--soft);border:0;color:var(--ink)}
+.btn.light.danger{background:#fdecea;color:#c0392b}
+body.dark .btn.light.danger{background:#3a1a1a;color:#ff8d82}
+.btn:disabled,.btn.loading{opacity:.45}
+.link{font-weight:800}
+
+/* الورقة السفلية */
+.sheet{border-radius:28px 28px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);padding-top:8px;animation:sheetUp .28s cubic-bezier(.2,.8,.2,1)}
+.handle{width:44px;height:5px;background:#d4d4da;border-radius:99px}
+body.dark .handle{background:#3a3a42}
+.sheet h3{font-size:20px;font-weight:800;letter-spacing:-.2px}
+.fab{width:48px;height:48px;border:0;box-shadow:var(--shadow)}
+
+/* بلاطات الخدمة */
+.svc{gap:12px}
+.svc-b{border:0;border-radius:20px;padding:16px 10px;background:var(--soft);color:var(--ink);box-shadow:var(--shadow-s);position:relative;overflow:hidden}
+.svc-b .ic{width:44px;height:44px;padding:9px;border-radius:14px;background:var(--ink);color:var(--paper);box-sizing:border-box;margin-bottom:4px}
+.svc-b b{font-size:16px;font-weight:800}
+.svc-b small{opacity:.65}
+.svc-b.alt{background:var(--soft);color:var(--ink)}
+.svc-b.alt .ic{background:#e8590c;color:#fff}
+.fchip{border-radius:999px;border:0;background:var(--soft);font-weight:700}
+.fchip.on{background:var(--ink);color:var(--paper)}
+.fchip em{font-style:normal;opacity:.6;margin-inline-start:4px}
+.dirbtn{border-radius:16px}
+.live-dot{background:var(--accent)}
+
+/* اختيار السيارة والخيارات */
+.veh{border-radius:18px;border-width:2px;transition:border-color .15s,background-color .15s,box-shadow .15s}
+.veh.selected{border-color:var(--ink);background:var(--paper);box-shadow:0 0 0 3px rgba(0,0,0,.06)}
+body.dark .veh.selected{box-shadow:0 0 0 3px rgba(255,255,255,.1)}
+.routebox{border-radius:18px;background:var(--soft);border:0}
+.routebox input,.notes{background:var(--soft);border:0;border-radius:14px}
+.opt{border-radius:999px}
+
+/* عروض الأسعار */
+.quote{border:0;border-radius:20px;background:var(--soft);padding:14px;box-shadow:var(--shadow-s)}
+.quote .price,.price{font-weight:800;letter-spacing:-.3px}
+.quote .q-side .btn{min-width:84px}
+.tag{border-radius:999px}.tag.gold{background:#fff3cf;color:#7a5a00}
+.pulse{box-shadow:0 8px 24px rgba(0,0,0,.25)}
+
+/* تتبع الرحلة */
+.driver{border:0;background:var(--soft);border-radius:20px}
+.avatar-s,.avatar{background:var(--ink);color:var(--paper)}
+.eta b{letter-spacing:-.5px}
+.stepper i,.stepper .dot{transition:background-color .3s}
+.chip{border:0;background:var(--soft)}
+.warn{border-radius:14px}
+.kyc-banner{border-radius:16px}
+
+/* رمز بدء الرحلة (4 أرقام) */
+.pin-box{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;padding:14px 18px;border-radius:20px;background:#000;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+body.dark .pin-box{background:#fff;color:#000}
+.pin-box small{font-size:12.5px;opacity:.75;line-height:1.5;max-width:50%}
+.pin-box b{font-size:38px;font-weight:800;letter-spacing:10px;font-variant-numeric:tabular-nums;padding-inline-start:10px}
+.pin-input{width:100%;text-align:center;font-size:34px;font-weight:800;letter-spacing:14px;padding:12px;margin:10px 0;border:2px solid var(--line);border-radius:16px;background:var(--soft);color:var(--ink)}
+.pin-input:focus{border-color:var(--ink);outline:0}
+.pin-hint{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--muted);margin:6px 0}
+
+/* بطاقات السائق / الإحصائيات / العمولة */
+.offer,.active,.card,.pcard{border:0;border-radius:var(--r);box-shadow:var(--shadow-s);background:var(--paper)}
+body.dark .offer,body.dark .active,body.dark .card,body.dark .pcard{background:var(--soft)}
+.stats>div{border:0;background:var(--soft);border-radius:18px}
+.hero-card{background:linear-gradient(135deg,#0d0d0f,#26262b);color:#fff;box-shadow:0 12px 28px rgba(0,0,0,.28);border-radius:24px}
+.hero-card small{color:#b9b9c2}
+.hero-card b{color:#fff;letter-spacing:-.8px}
+.hero-card span{color:#c9a24a;font-weight:700}
+.comm .pill.ok{background:#e3f8ec;color:#0a8a4a}
+.ref-card{text-align:center;background:#000;color:#fff;border-radius:24px;padding:22px 16px;margin:12px 0;box-shadow:0 12px 28px rgba(0,0,0,.25)}
+.ref-card small{display:block;opacity:.7}
+.ref-card b{display:block;font-size:40px;letter-spacing:8px;margin:6px 0 14px;font-weight:800}
+.ref-card .btn{background:#fff;color:#000}.ref-card .btn.light{background:rgba(255,255,255,.15);color:#fff}
+.ref-page{padding:14px}
+
+/* القوائم */
+.menu{border-radius:20px;overflow:hidden;background:var(--paper);box-shadow:var(--shadow-s);border:0;margin:12px 0}
+.menu-row{border-bottom:1px solid var(--line)}
+.idcard{border-radius:20px}
+.btn-soft{border:0;border-radius:18px}
+.pill{font-weight:800}
+
+/* النوافذ المنبثقة */
+.modal-card{border-radius:28px 28px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));animation:sheetUp .25s cubic-bezier(.2,.8,.2,1)}
+.big-p{font-weight:800;font-size:17px;line-height:1.6;text-align:center}
+#toast{border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+
+/* إدارة */
+.acard{border:0;border-radius:18px;box-shadow:var(--shadow-s)}
+.acard.warnc{background:#fff5f4}
+body.dark .acard.warnc{background:#2a1716}
+.fld input,.fld select{background:var(--soft);border:0;border-radius:12px}
+
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
