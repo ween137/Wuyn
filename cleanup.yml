@@ -1,0 +1,31 @@
+# ضعه في المستودع بهذا المسار: .github/workflows/cleanup.yml
+# ثم: GitHub ← Actions ← "Archive old files" ← Run workflow
+# ينقل الملفات القديمة إلى _legacy_archive (لا يحذف شيئاً نهائياً) ثم يحفظ التغيير.
+name: Archive old files
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move old duplicates to _legacy_archive
+        run: |
+          mkdir -p _legacy_archive
+          for f in "app.js" "app2.js" "app3.js" "App.js" "app (1).js" "auth.js" "Auth.js" \
+                   "signin.js" "signin (1).js" "signin (2).js" "Signin.js" "admin.js" \
+                   "icons (1).js" "sw (1).js" "sw (2).js" \
+                   "app (1).css" "app .css" "app (3).css" "check.html"; do
+            if [ -f "$f" ]; then
+              git mv -f "$f" "_legacy_archive/$f" 2>/dev/null || mv -f "$f" "_legacy_archive/$f"
+              echo "archived: $f"
+            fi
+          done
+          # لا يلمس: app5.js, customer.js, provider.js, dashboard.js, plus.js, plus.css, uber.css, app-new.css, app.css, sw.js
+      - name: Commit
+        run: |
+          git config user.name "cleanup-bot"
+          git config user.email "cleanup-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "nothing to archive" || (git commit -m "Archive old duplicate files" && git push)
