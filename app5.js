@@ -2,7 +2,8 @@ import './plus.js';
 import './cargo.js';
 import './buses.js';
 import './offices.js';
-try { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/app-new.css'; document.head.appendChild(l); } catch { }
+try { if (!document.getElementById('appnew-css')) { const l = document.createElement('link'); l.id = 'appnew-css'; l.rel = 'stylesheet'; l.href = '/app-new.css'; document.head.appendChild(l); } } catch { }
+try { if (!document.getElementById('uber-css')) { const l = document.createElement('link'); l.id = 'uber-css'; l.rel = 'stylesheet'; l.href = '/uber.css'; document.head.appendChild(l); } } catch { }
 import { getClient } from './supabase.js';
 import { mountAuth, mountComplete } from './login.js';
 import { mountCustomer } from './customer.js';
@@ -37,7 +38,7 @@ async function route(session) {
   const my = ++seq;
   if (!session) { currentId = null; unmount(); showAuth(); return; }
   if (currentId === session.user.id && cleanup) return; // تجديد الرمز لا يعيد بناء الشاشة
-  currentId = session.user.id; unmount(); splash();
+  currentId = session.user.id; unmount(); if (!app.querySelector('.splash')) splash();
   let profile = null, err = null;
   for (let i = 0; i < 3 && !profile; i++) {
     const { data, error } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
@@ -54,7 +55,7 @@ async function route(session) {
 }
 
 async function boot() {
-  splash('جارٍ التحميل…');
+  if (!app.querySelector('.splash')) splash();
   const slow = setTimeout(() => { if (!db) splash('الاتصال بطيء. إن استمر التحميل جرّب VPN أو شبكة أخرى.'); }, 12000);
   try { await ensureSupabase(); db = getClient(); }
   catch (e) {
