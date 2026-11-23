@@ -29,8 +29,7 @@ select v.k, v.v from (values
   ('collusion_gps_m',       '30'),
   ('cancel_move_m',         '300'),
   ('cancel_strike_limit',   '2'),
-  ('cargo_kyc_threshold',   '500000'),
-  ('cargo_kyc_all',         '0'),
+  ('restrict_hours',        '24'),
   ('require_device',        '1')
 ) as v(k, v)
 where not exists (select 1 from public.settings s where s.key = v.k);
@@ -93,6 +92,8 @@ create table if not exists private.ride_meta (
   created_at timestamptz not null default now()
 );
 create index if not exists ride_meta_device_idx on private.ride_meta (device_id);
+alter table private.user_flags   add column if not exists restricted_until timestamptz;
+alter table private.device_flags add column if not exists restricted_until timestamptz;
 alter table private.user_flags   enable row level security;
 alter table private.device_flags enable row level security;
 alter table private.devices      enable row level security;
@@ -169,32 +170,35 @@ language sql immutable set search_path = '' as $$
   select p_device is not null and p_device ~ '^[A-Za-z0-9_-]{16,128}$';
 $$;
 
--- حالة الحارس: ok | identity_required | banned
+-- حالة الحارس: ok | restricted (تقييد مؤقت تلقائي الانتهاء) | banned. لا يوجد توثيق هوية للزبائن.
+create or replace function private.guard_until(p_uid uuid, p_device text) returns timestamptz
+language sql stable security definer set search_path = '' as $$
+  select max(u) from (
+    select restricted_until as u from private.user_flags where user_id = p_uid
+    union all
+    select restricted_until from private.device_flags where p_device is not null and device_id = p_device
+  ) x where u > pg_catalog.now();
+$$;
+
 create or replace function private.guard_state(p_uid uuid, p_device text) returns text
 language plpgsql stable security definer set search_path = '' as $$
-declare
-  v_ver timestamptz; v_kyc boolean; v_kyc_at timestamptz;
-  v_dres boolean; v_dat timestamptz; v_ban boolean;
+declare v_ban boolean;
 begin
-  select verified_at into v_ver from public.customer_identity where user_id = p_uid;
-  select kyc_required, restricted_at into v_kyc, v_kyc_at from private.user_flags where user_id = p_uid;
-  if p_device is not null then
-    select restricted, restricted_at, banned into v_dres, v_dat, v_ban from private.device_flags where device_id = p_device;
-  end if;
+  if p_device is not null then select banned into v_ban from private.device_flags where device_id = p_device; end if;
   if coalesce(v_ban, false) then return 'banned'; end if;
-  if (coalesce(v_kyc, false) and (v_ver is null or v_ver <= coalesce(v_kyc_at, '-infinity')))
-     or (coalesce(v_dres, false) and (v_ver is null or v_ver <= coalesce(v_dat, '-infinity'))) then
-    return 'identity_required';
-  end if;
+  if private.guard_until(p_uid, p_device) is not null then return 'restricted'; end if;
   return 'ok';
 end $$;
 
 create or replace function private.guard_check(p_uid uuid, p_device text) returns void
 language plpgsql stable security definer set search_path = '' as $$
-declare s text := private.guard_state(p_uid, p_device);
+declare s text := private.guard_state(p_uid, p_device); u timestamptz;
 begin
   if s = 'banned' then raise exception 'account_restricted'; end if;
-  if s = 'identity_required' then raise exception 'identity_required'; end if;
+  if s = 'restricted' then
+    u := private.guard_until(p_uid, p_device);
+    raise exception 'account_restricted:%', greatest(1, ceil(extract(epoch from (u - pg_catalog.now())) / 60))::int;
+  end if;
 end $$;
 
 create or replace function private.commission_rate_for(p_provider uuid, p_at timestamptz) returns numeric
@@ -478,9 +482,11 @@ begin
         on conflict (device_id) do update set strikes = private.device_flags.strikes + 1, updated_at = pg_catalog.now();
       end if;
       if v_strikes >= v_limit then
-        update private.user_flags set kyc_required = true, restricted_at = pg_catalog.now() where user_id = uid;
+        update private.user_flags set strikes = 0, restricted_at = pg_catalog.now(),
+               restricted_until = pg_catalog.now() + pg_catalog.make_interval(hours => private.sn('restrict_hours', 24)::int) where user_id = uid;
         if v_dev is not null then
-          update private.device_flags set restricted = true, restricted_at = pg_catalog.now() where device_id = v_dev;
+          update private.device_flags set strikes = 0, restricted = true, restricted_at = pg_catalog.now(),
+                 restricted_until = pg_catalog.now() + pg_catalog.make_interval(hours => private.sn('restrict_hours', 24)::int) where device_id = v_dev;
         end if;
       end if;
     end if;
@@ -612,13 +618,13 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------
--- 12) الشحن: توثيق مطلوب فقط للشحنات عالية القيمة (أو الكل إن فعّله المدير)
+-- 12) الشحن: بلا توثيق هوية للزبائن (يبقى فحص التقييد المؤقت فقط)
 -- ---------------------------------------------------------------
 create or replace function public.cargo_book_internal(
   p_user uuid, p_trip bigint, p_weight numeric, p_desc text, p_cat text, p_packages integer, p_fragile boolean,
   p_pickup text, p_rname text, p_rphone text, p_raddr text, p_shop text, p_group uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare t public.cargo_trips; used numeric; v_price numeric; v_pin text; v_id bigint; v_role text;
+declare t public.cargo_trips; used numeric; v_price numeric; v_pin text; v_id bigint;
 begin
   select * into t from public.cargo_trips where id = p_trip for update;
   if not found or t.status <> 'open' then raise exception 'not_open'; end if;
@@ -626,12 +632,6 @@ begin
   if used + p_weight > t.capacity_kg then raise exception 'full:%', (t.capacity_kg - used); end if;
   v_price := greatest(t.min_charge, round(p_weight * t.price_per_kg));
   perform private.guard_check(p_user, null);
-  select role into v_role from public.profiles where id = p_user;
-  if v_role = 'customer'
-     and (v_price >= private.sn('cargo_kyc_threshold', 500000) or private.sn('cargo_kyc_all', 0) >= 1)
-     and not exists (select 1 from public.customer_identity where user_id = p_user) then
-    raise exception 'identity_required';
-  end if;
   v_pin := lpad((('x' || encode(extensions.gen_random_bytes(3), 'hex'))::bit(24)::int % 10000)::text, 4, '0');
   insert into public.cargo_items(trip_id, group_id, owner_id, shop_name, description, category, weight_kg, packages, fragile, pickup_address,
     receiver_name, receiver_phone, receiver_address, price, pin)
@@ -733,18 +733,18 @@ language plpgsql stable security definer set search_path = '' as $$
 begin
   if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   return jsonb_build_object(
-    'users',   coalesce((select jsonb_agg(jsonb_build_object('user_id', f.user_id, 'name', p.full_name, 'phone', p.phone, 'strikes', f.strikes, 'kyc_required', f.kyc_required, 'restricted_at', f.restricted_at))
-                         from private.user_flags f left join public.profiles p on p.id = f.user_id where f.strikes > 0 or f.kyc_required), '[]'::jsonb),
-    'devices', coalesce((select jsonb_agg(jsonb_build_object('device_id', left(d.device_id, 8) || '…', 'strikes', d.strikes, 'restricted', d.restricted, 'banned', d.banned))
-                         from private.device_flags d where d.strikes > 0 or d.restricted or d.banned), '[]'::jsonb));
+    'users',   coalesce((select jsonb_agg(jsonb_build_object('user_id', f.user_id, 'name', p.full_name, 'phone', p.phone, 'strikes', f.strikes, 'restricted_until', f.restricted_until))
+                         from private.user_flags f left join public.profiles p on p.id = f.user_id where f.strikes > 0 or f.restricted_until > pg_catalog.now()), '[]'::jsonb),
+    'devices', coalesce((select jsonb_agg(jsonb_build_object('device_id', left(d.device_id, 8) || '…', 'strikes', d.strikes, 'restricted', coalesce(d.restricted_until > pg_catalog.now(), false), 'banned', d.banned))
+                         from private.device_flags d where d.strikes > 0 or d.restricted_until > pg_catalog.now() or d.banned), '[]'::jsonb));
 end $$;
 
 create or replace function public.admin_clear_restriction(p_user uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if not public.is_admin() then raise exception 'غير مصرّح'; end if;
-  update private.user_flags set strikes = 0, kyc_required = false, updated_at = pg_catalog.now() where user_id = p_user;
-  update private.device_flags set strikes = 0, restricted = false, updated_at = pg_catalog.now()
+  update private.user_flags set strikes = 0, kyc_required = false, restricted_until = null, updated_at = pg_catalog.now() where user_id = p_user;
+  update private.device_flags set strikes = 0, restricted = false, restricted_until = null, updated_at = pg_catalog.now()
    where device_id in (select device_id from private.devices where user_id = p_user) and banned = false;
 end $$;
 
@@ -772,7 +772,7 @@ begin
 end $$;
 -- دوال private الجديدة فقط (لا نلمس دوال private القديمة: office_id/co_id/bus_set_status قد تستعملها سياسات RLS)
 revoke all on function private.sn(text, numeric), private.client_ip(), private.valid_device(text),
-  private.guard_state(uuid, text), private.guard_check(uuid, text),
+  private.guard_until(uuid, text), private.guard_state(uuid, text), private.guard_check(uuid, text),
   private.commission_rate_for(uuid, timestamptz), private.finalize_ride(bigint, double precision)
   from public, anon, authenticated;
 

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "check": "node --check js/app.js && node --check js/auth.js && node --check js/rides.js && node --check js/chat.js && node --check js/admin.js && node --check js/map.js && node --check js/utils.js",
-    "hash-code": "node scripts/hash-code.mjs"
+    "check": "for f in app5 login dashboard customer provider live chat map utils guard cargo buses offices plus rides help nav shell directory guest loader supabase device; do node --check $f.js || exit 1; done",
+    "hash-code": "node hash-code.mjs"
   }
 }
