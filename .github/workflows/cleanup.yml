@@ -1,0 +1,23 @@
+name: Delete old files
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete old files
+        run: |
+          for f in "app.js" "app2.js" "app3.js" "App.js" "app (1).js" "auth.js" "Auth.js" \
+                   "signin.js" "signin (1).js" "signin (2).js" "Signin.js" "admin.js" \
+                   "icons (1).js" "sw (1).js" "sw (2).js" \
+                   "app (1).css" "app .css" "app (3).css" "check.html" "kyc.js" "netlify.toml"; do
+            if [ -f "$f" ]; then git rm -q -f -- "$f" && echo "deleted: $f"; fi
+          done
+          if [ -d _legacy_archive ]; then git rm -r -q -f _legacy_archive; fi
+      - name: Commit
+        run: |
+          git config user.name "cleanup-bot"
+          git config user.email "cleanup-bot@users.noreply.github.com"
+          git diff --cached --quiet && echo "nothing" || (git commit -m "Delete old files" && git push)
