@@ -16,6 +16,23 @@
     if (!tried) { try { sessionStorage.setItem('g-tried', '1'); } catch (e) { } clean().then(function () { location.reload(); }); return; }
     var a = document.getElementById('app'); if (!a) return;
     a.innerHTML = '<div class="splash"><div class="auth-logo">وين؟</div><p>تعذّر تشغيل التطبيق</p><p dir="ltr" style="font-size:12px;opacity:.7;max-width:90%;word-break:break-word">' + esc(last || 'لم يكتمل التحميل (تحقق من الاتصال أو VPN)') + '</p><button class="btn" id="g-rl">إعادة المحاولة</button></div>';
+    /* تشخيص: ابحث عن ملف مفقود في سلسلة الاستيراد وأظهره */
+    (function () {
+      var seen = {}, bad = '';
+      var walk = function (u) {
+        if (seen[u] || bad) return Promise.resolve(); seen[u] = 1;
+        return fetch(u, { cache: 'no-store' }).then(function (r) {
+          var ct = r.headers.get('content-type') || '';
+          if (!r.ok || ct.indexOf('javascript') < 0) { bad = u; return; }
+          return r.text().then(function (t) {
+            var re = /(?:from|import)\s*\(?\s*['"]\.\/([^'"]+)['"]/g, m, p = [];
+            while ((m = re.exec(t))) p.push(walk('/' + m[1]));
+            return Promise.all(p);
+          });
+        }).catch(function () { });
+      };
+      walk('/app5.js').then(function () { if (bad) { var p = document.querySelector('#app .splash p[dir]'); if (p) p.textContent = 'ملف مفقود على الموقع: ' + bad; } });
+    })();
     document.getElementById('g-rl').onclick = function () { try { sessionStorage.removeItem('g-tried'); } catch (e) { } clean().then(function () { location.reload(); }); };
   }, 9000);
 })();
