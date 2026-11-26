@@ -1,5 +1,6 @@
 // شاشات الدخول والتسجيل والتحقق (ملف مستقل بأيقوناته وتنسيقه)
 import { esc, latin, errMsg } from './utils.js';
+import { openLegal } from './legal.js';
 try { if (!document.getElementById('login-css')) { const l = document.createElement('link'); l.id = 'login-css'; l.rel = 'stylesheet'; l.href = '/login.css'; document.head.appendChild(l); } } catch { }
 const ICONS = {
   arrowl: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
@@ -65,6 +66,7 @@ const FORMS = {
     ${field('email', 'البريد الإلكتروني (اختياري)', 'email', 'maxlength="254" autocomplete="email" dir="ltr" placeholder="name@mail.com" autocapitalize="off"', 'mail')}
     ${pass('password', 'كلمة المرور (8 أحرف على الأقل)', 'new-password', 'minlength="8"')}
     <p class="small center tgnote">${ic('send', 14)} سنتحقق من رقمك برمز يصلك على تلغرام</p>
+    <p class="small center legalnote">بالمتابعة أنت توافق على <button type="button" class="link" data-legal="terms">الشروط والأحكام</button> و<button type="button" class="link" data-legal="privacy">سياسة الخصوصية</button></p>
     <button class="btn full big" data-submit>متابعة ${ic('arrowl', 20)}</button>`,
   forgot: `<h2>استعادة كلمة المرور</h2><p class="sub">سنرسل رمزاً إلى تلغرام على رقم حسابك</p>
     ${field('phone', 'رقم الهاتف', 'tel', PHONE_X, 'phone')}
@@ -101,6 +103,7 @@ export function mountAuth(app, { db, mode = 'login', message = '', onDone, onGue
   const form = app.querySelector('#auth-form'), msg = app.querySelector('#auth-msg');
   const show = (t, ok) => { msg.textContent = t; msg.className = 'auth-msg show' + (ok ? ' ok' : ''); };
 
+  app.querySelectorAll('[data-legal]').forEach(b => b.onclick = () => openLegal(b.dataset.legal));
   app.querySelector('#guest-btn')?.addEventListener('click', () => onGuest());
   const gs = app.querySelector('#gslot');
   if (gs) googleEnabled().then(on => {

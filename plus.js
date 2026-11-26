@@ -1,6 +1,7 @@
 // تحديث «وين؟» الكبير: الشعار، قائمة الخدمات، شريط الإعلانات، إدارة الإعلانات، الإعدادات، السيارات التزيينية، واجهة المحلات
 // ملف مستقل: يضيف نفسه إلى التطبيق دون تعديل بقية الملفات.
 import { esc, toast, toggleTheme } from './utils.js';
+import { openLegal } from './legal.js';
 
 try { if (!document.getElementById('plus-css')) { const l = document.createElement('link'); l.id = 'plus-css'; l.rel = 'stylesheet'; l.href = '/plus.css'; document.head.appendChild(l); } } catch { }
 
@@ -180,17 +181,22 @@ const SERVICES = [
   ['cargo', 'truck', 'شحن البضائع', 'شاحنات بين المدن', () => window.openCargo?.()],
   ['bus', 'bus', 'حجز باص', 'رحلات بين المدن', () => window.openBuses?.()],
   ['shop', 'shop', 'المحلات', 'شحن بضاعة محلّك', () => openShop()],
-  ['dir', 'office', 'المكاتب والسائقون', 'الدليل الكامل', () => document.querySelector('[data-act=dir]')?.click()],
 ];
+function hubHtml() {
+  const ord = S.get('dvk') === 'delivery' ? [SERVICES[1], SERVICES[0], ...SERVICES.slice(2)] : SERVICES;
+  return `<div class="pl-hub"><div class="pl-hub-h"><b>الخدمات</b><small>اختر ما تحتاجه</small></div>` + ord.map(s => `<button class="pl-svc" data-s="${s[0]}"><span class="pl-svc-i">${ic(s[1], 26)}</span><span class="g"><b>${s[2]}</b><small>${s[3]}</small></span><span class="pl-svc-a">${ic('back', 18)}</span></button>`).join('') + `</div>`;
+}
+/* customer.js يرسم القائمة بنفسه داخل الورقة (بلا وميض)، وplus.js يستدعي الدالتين فقط */
+window.plHubHtml = hubHtml;
+window.plService = k => { buzz(); SERVICES.find(s => s[0] === k)?.[4](); };
 function hubInit() {
   const sheet = document.querySelector('#sheet'); if (!sheet) return;
   const svc = sheet.querySelector('.svc'); if (!svc) return;
-  if (sheet.querySelector('.pl-hub')) return;
-  const hub = document.createElement('div'); hub.className = 'pl-hub';
-  const ord = S.get('dvk') === 'delivery' ? [SERVICES[1], SERVICES[0], ...SERVICES.slice(2)] : SERVICES;
-  hub.innerHTML = `<div class="pl-hub-h"><b>الخدمات</b><small>اختر ما تحتاجه</small></div>` + ord.map(s => `<button class="pl-svc" data-s="${s[0]}"><span class="pl-svc-i">${ic(s[1], 26)}</span><span class="g"><b>${s[2]}</b><small>${s[3]}</small></span><span class="pl-svc-a">${ic('back', 18)}</span></button>`).join('');
-  hub.onclick = e => { const b = e.target.closest('[data-s]'); if (!b) return; buzz(); SERVICES.find(s => s[0] === b.dataset.s)[4](); };
-  svc.after(hub); svc.classList.add('pl-hidden');
+  if (sheet.querySelector('.pl-hub')) { svc.classList.add('pl-hidden'); return; }
+  /* احتياط فقط: إن لم يرسمها customer.js */
+  svc.insertAdjacentHTML('afterend', hubHtml());
+  svc.classList.add('pl-hidden');
+  sheet.querySelector('.pl-hub').onclick = e => { const b = e.target.closest('[data-s]'); if (b) window.plService(b.dataset.s); };
 }
 
 /* ---------- شاشة الإعدادات ---------- */
@@ -218,6 +224,10 @@ function openSettings() {
       <button class="pl-opt btn-like" data-go="cargo">${ic('truck', 22)}<span class="g"><b>شحناتي</b><small>تتبّع شحناتك</small></span></button>
       <button class="pl-opt btn-like" data-go="bus">${ic('bus', 22)}<span class="g"><b>حجوزات الباصات</b><small>ابحث واحجز مقعدك</small></span></button>
       ${isAdmin ? `<button class="pl-opt btn-like" data-go="ads">${ic('mega', 22)}<span class="g"><b>إدارة الإعلانات</b><small>للأدمن فقط</small></span></button>` : ''}</div>
+    <h4 class="pl-sec">القانونية</h4>
+    <div class="pl-card"><button class="pl-opt btn-like" data-lg="terms">${ic('info', 22)}<span class="g"><b>الشروط والأحكام</b></span></button>
+      <button class="pl-opt btn-like" data-lg="privacy">${ic('eye', 22)}<span class="g"><b>سياسة الخصوصية</b></span></button>
+      <button class="pl-opt btn-like" data-lg="aup">${ic('check', 22)}<span class="g"><b>الاستخدام المقبول</b></span></button></div>
     <h4 class="pl-sec">الدعم والبيانات</h4>
     <div class="pl-card"><a class="pl-opt btn-like" href="tel:+963933712979">${ic('phone', 22)}<span class="g"><b>اتصل بالدعم</b><small>+963 933 712 979</small></span></a>
       <button class="pl-opt btn-like" id="refresh">${ic('zap', 22)}<span class="g"><b>تحديث التطبيق</b><small>مسح الذاكرة المؤقتة وجلب أحدث نسخة</small></span></button>
@@ -229,6 +239,7 @@ function openSettings() {
     if (k === 'theme') { if (v === 'auto') S.set('theme', 'auto'); else { S.set('theme', v); const d = document.body.classList.contains('dark'); if ((v === 'dark') !== d) toggleTheme(); } } else S.set(k, v);
   });
   L.body.querySelectorAll('[data-sw]').forEach(i => i.onchange = () => { S.set(i.dataset.sw, i.checked ? '1' : '0'); if (i.dataset.sw === 'ads') drawAd(); });
+  L.body.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => openLegal(b.dataset.lg));
   L.body.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { L.close(); ({ shop: openShop, cargo: () => window.openCargo?.(), bus: () => window.openBuses?.(), ads: openAdsAdmin })[b.dataset.go](); });
   L.body.querySelector('#notif').onclick = async () => { if (!('Notification' in window)) return; try { const r = await Notification.requestPermission(); L.body.querySelector('#ns').textContent = r === 'granted' ? 'مفعّلة ✅' : 'لم يتم السماح'; } catch { } };
   L.body.querySelector('#inst').onclick = async () => { if (deferred) { deferred.prompt(); deferred = null; } else toast('من قائمة المتصفح (⋮) اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»', 'ok'); };
